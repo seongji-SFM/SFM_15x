@@ -1,0 +1,24 @@
+노르딕 개발 도큐먼드에서 BLE Secure DFU Bootloader 으로 검색하면 가이드가 나온다.
+
+예) 14.2
+Software backend (micro-ecc)
+micro-ecc is an open source library that performs cryptographic operations. It is optimized for small program size while maintaining high processing speed. The micro-ecc backend supports all current nRF5 Series devices.
+
+When using micro-ecc, you must ensure compliance with the license of the library as stated in the LICENSE.txt file that is included in micro-ecc.
+
+The cryptography library expects to find the compiled micro-ecc library in InstallFolder\external\micro-ecc\micro-ecc.
+
+To install micro-ecc, complete the following steps:
+
+Install version 4.9-2015-q3-update of the GCC compiler toolchain for ARM. You can use ARM's Launchpad to find the toolchain for your operating system.
+Make sure that make is installed (see, for example, MinGW, GNU Make, or Xcode).
+Clone the micro-ecc GitHub repository into InstallFolder\external\micro-ecc\micro-ecc.
+Enter the subdirectory for the SoC and the toolchain that you are using to build your application:
+InstallFolder\external\micro-ecc\nrf52_keil\armgcc
+InstallFolder\external\micro-ecc\nrf52_iar\armgcc
+InstallFolder\external\micro-ecc\nrf52_armgcc\armgcc
+Run make to compile the micro-ecc library.
+
+-> nrf52832는 FPU를 지원하므로 nrf52hf_armgcc, nrf52hf_keil을 사용한다.
+  nrf52hf_armgcc : micro_ecc_lib_nrf52.a 생성
+  nrf52hf_keil : micro_ecc_lib_nrf52.lib 생성

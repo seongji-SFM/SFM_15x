@@ -1,0 +1,77 @@
+/*********************************************************************************************/
+Write CMD
+1. SFM20R
+R1 : flash_write_R1_CE.cmd
+R2 : flash_write_R2_FCC.cmd
+R3 : flash_write_R3_TELEC.cmd
+R4 : flash_write_R4_FCC.cmd
+
+2. SRM200A
+flash_write_SRM_WIFI.cmd
+
+3. 14채널 AP생성용.
+flash_write_test_14ch_ap_PROVISION.cmd
+
+4. 인증용
+Certification_Test_write_CE_Adaptivity.cmd
+Certification_Test_write_RF_TEST.cmd
+Certification_Test_write_TELEC.cmd
+
+/*********************************************************************************************/
+old vsersions
+user1.1024.new.2_mainslp.bin
+esp_init_data_default_AD_GPIO13.bin
+
+/*********************************************************************************************/
+20170510 : wifi버전 읽는 커맨드 추가 
+           SPI_AT_ModemSLP_GPIO_VER.bin
+               AT+VER 커맨드 추가됨 (init_data_default의 버젼정보)
+           esp_init_data_default_V0101.bin
+               버젼필드 지정 : (126 & 127 byte) -> 0x01 0x01
+
+/*********************************************************************************************/
+SFM20R 바이너리 정보
+20171117 : FCC, CE, TELEC용 바이너리 (3개로 변경됨.)
+
+SPT_AT_ModemSLP_GPIO_VER_FLASH_CE_301117.bin    : Channel 1~13  //"Nov 30 2017 10:31:44"
+SPT_AT_ModemSLP_GPIO_VER_FLASH_FCC_301117.bin   : Channel 1~11  //"Nov 30 2017 10:31:51"
+SPT_AT_ModemSLP_GPIO_VER_FLASH_TELEC_301117.bin : Channel 1~14  //"Nov 30 2017 10:31:35"
+
+CE : WIFI VER - wifi_030301
+FCC : WIFI VER - wifi_040401
+TELEC : WIFI VER - wifi_050501
+
+/*********************************************************************************************/ 
+SRM200 바이너리 정보
+20190820 : 패시브 스캔지원 바이너리.
+user1.1024.new.2_20190820.bin
+  부팅로그 (버전정보)
+  2nd boot version : 1.6
+  SDK ver: 3.1.0-dev(bd176e4) compiled @ Jul  3 2019 15:07:05
+  phy ver: 1145_0, pp ver: 10.2
+
+/*********************************************************************************************/  
+체크리스트
+-공통
+추가된 AT커맨드
+AT+TXPWRITE : AT+TXPWRITE="524E4A444038"
+AT+TXPREAD : RNJD@8 -> OK
+AT+VER : -> OK
+AT+LEDON : -> OK
+AT+LEDOFF : -> OK
+AT+MODEMSLP : Modem Sleep mode -> OK
+AT+STATEHIGH : -> OK
+AT+STATELOW : -> OK
+
+SCAN TEST
+  . AT+CWLAP
+Passive SCAN TEST
+  . AT+CWLAP=,,,1,,
+
+멀티부팅 테스트
+  -> RF테스트모드 진입. (115200) : CM1 or 점퍼셋팅으로 진입가능.
+  . wifitxout 1 0x00 0
+  . cmdstop
+
+
+      

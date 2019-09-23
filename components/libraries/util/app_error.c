@@ -51,6 +51,11 @@
 #include "app_error.h"
 #include "nordic_common.h"
 #include "sdk_errors.h"
+#ifdef FEATURE_WISOL_DEVICE
+#include "cfg_config_defines.h"
+#include "nrf_strerror.h"
+#include "cfg_dbg_log.h"
+#endif
 
 /**@brief Function for error handling, which is called when an error has occurred.
  *
@@ -69,7 +74,13 @@ void app_error_handler_bare(ret_code_t error_code)
         .p_file_name = NULL,
         .err_code    = error_code,
     };
-
+#if defined(FEATURE_WISOL_DEVICE) && !defined(DEBUG)
+    {
+        uint32_t lrReg;
+        CFG_GET_LINK_REGISTER(lrReg);
+        cPrintLog(CDBG_MAIN_LOG, "app_error! code:%d[%s] lr:0x%p\n", error_code, nrf_strerror_get(error_code), (void *)lrReg);
+    }
+#endif
     app_error_fault_handler(NRF_FAULT_ID_SDK_ERROR, 0, (uint32_t)(&error_info));
 
     UNUSED_VARIABLE(error_info);

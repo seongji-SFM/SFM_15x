@@ -1,0 +1,297 @@
+/* Copyright (c) 2017 WISOL Corp. All Rights Reserved.
+ *
+ * The information contained herein is property of WISOL Cor.
+ * Terms and conditions of usage are described in detail in WISOL STANDARD SOFTWARE LICENSE AGREEMENT.
+ *
+ * This heading must NOT be removed from
+ * the file.
+ *
+ */
+
+/** @file
+ *
+ * @brief control wifi module.
+ *
+ * This file contains the control wifi module.
+ */
+
+
+#ifndef __CFG_WIFI_MODULE_H__
+#define __CFG_WIFI_MODULE_H__
+#include "cfg_config_defines.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define CWIFI_Result_OK            (0)
+#define CWIFI_Result_Busy          (-1)
+#define CWIFI_Result_NoDevice      (-2)
+#define CWIFI_Result_NotReady      (-3)
+#define CWIFI_Result_NoData        (-4)
+#define CWIFI_Result_NotStarted    (-5)
+#define CWIFI_Result_NotSupported  (-6)
+
+#define CWIFI_SPI_BUF_SIZE 80
+#define CWIFI_BYPASS_DEFAULT_BUFFER_SIZE 256
+#define CWIFI_RESPONSE_CACHE_BUFFER_SIZE 256
+#define CWIFI_AT_CMD_RESP_PACKET_MAX 63  // & 0x3F : 6bit max value
+
+#define CWIFI_BSSID_CNT 4
+#define CWIFI_BSSID_SIZE 6
+#define CWIFI_SSID_SIZE 32
+#define CWIFI_SSID_HEADER_SIZE_MAX 16
+
+#define CWIFI_PROC_BOOT_TIME_MS 500
+
+#define CWIFI_PROC_REQ_TIME_MS 10
+#define CWIFI_MODULE_DETECT_TIME_MS 100
+#define CWIFI_MODULE_DETECT_TIME_OUT_TICK 5
+#define CWIFI_MODULE_DETECT_TRY_MAX 3
+
+#define CWIFI_MODULE_ENTER_SUSPEND_MS 0 //0 sec 5000 // 5 Sec
+
+#define CWIFI_SPI_TX_DATA_SEND_SIZE 32
+
+#define CWIFI_SPI_WAIT_TIME_MS 10
+#define CWIFI_SPI_WAIT_TIME_OUT_TICK 20  // 200 ms (CWIFI_SPI_WAIT_TIME_MS * CWIFI_SPI_WAIT_TIME_OUT_TICK)
+#define CWIFI_SPI_ISR_CLEAR_WAIT_TIMEOUT_TICK 1
+#define CWIFI_SPI_INTERRUPT_CLEAR_WAIT_TIME_MS 20
+
+#define CWIFI_SPI_CMD_RESP_TIME_OUT_TICK_LONG 500  //for first response time out tick
+#define CWIFI_SPI_CMD_RESP_WAIT_TIME_MS_LONG 20  //for first response time out time
+#define CWIFI_SPI_CMD_RESP_TIME_OUT_TICK 2
+#define CWIFI_SPI_CMD_RESP_WAIT_TIME_MS 10
+
+#define CWIFI_SCAN_RETRY_WAIT_TIME_MS 2000
+#define CWIFI_BYPASS_WAIT_TIME_MS 100
+
+typedef enum
+{
+    CWIFI_CHANNEL_TYPE_13,
+    CWIFI_CHANNEL_TYPE_DEFAULT = CWIFI_CHANNEL_TYPE_13,
+    CWIFI_CHANNEL_TYPE_12,
+    CWIFI_CHANNEL_TYPE_14,
+    CWIFI_CHANNEL_TYPE_MAX
+}CWIFI_CHANNEL_TYPE_e;       //It is supported from version 6 (ESP8285 nonos SDK 3.1)
+
+typedef enum
+{
+    CWIFI_SCAN_TYPE_ACTIVE,
+    CWIFI_SCAN_TYPE_DEFAULT = CWIFI_SCAN_TYPE_ACTIVE,
+    CWIFI_SCAN_TYPE_PASSIVE,
+    CWIFI_SCAN_TYPE_MAX
+}CWIFI_SCAN_TYPE_e;       //It is supported from version 6 (ESP8285 nonos SDK 3.1)
+
+typedef void (*cWifi_bypass_recv_handler_t)(const uint8_t *pData, uint32_t dataSize);
+typedef void (*cWifi_bypass_noti_callback_t)(bool is_ok, const char *noti_str);
+
+extern int m_cWifiCountryPolicy;
+extern char m_cWifiCountryCode[8];
+
+/**
+ * @brief       Function for initializing resource of wifi module 
+ */
+void cWifi_prepare_start(uint8_t *get_mac_buf /*6byte buf*/);
+bool cWifi_get_STA_MAC(uint8_t *get_mac_buf /*6byte buf*/);
+bool cWifi_get_tx_power_tables(uint8_t *get_tx_pwr_buf /*6byte buf*/);
+
+/**
+ * @brief       Function for wifi scan time.
+ * @param[in]   sec of the scan time
+ *
+ */
+void cWifi_set_retry_time(unsigned int retry_time_sec);
+
+/**
+ * @brief       Function for entering wifi download mode
+ */
+void cWifi_enter_download_mode(void);
+
+/**
+ * @brief       Function for entering wifi rftest mode (Note: You can not perform other functions.)
+ */
+void cWifi_enter_rftest_mode(void);
+
+/**
+ * @brief       Function for power control wifi module
+ */
+void cWifi_power_control(bool on);
+
+/**
+ * @brief       Function for request scan work.
+ *
+ * @return      CWIFI_Result_OK on success. Otherwise an error code(eg.CWIFI_Result_Busy).
+ */
+int cWifi_ap_scan_req(void);
+
+/**
+ * @brief       Function for request scan work.
+ *
+ * @param[in]   p_SSID_header_str pointer of SSID Head String (for SSID Filter)
+ * @return      CWIFI_Result_OK on success. Otherwise an error code(eg.CWIFI_Result_Busy).
+ */
+int cWifi_ap_get_available_first_BSSID(const char *p_SSID_header_str);
+
+
+/**
+ * @brief       Function for request scan work.
+ *
+ * @param[in]   mac_cnt : count of mac list item
+ * @param[in]   mac_list : point of mac list array (item of 6 byte in array)
+ * @return      CWIFI_Result_OK on success. Otherwise an error code(eg.CWIFI_Result_Busy).
+ */
+int cWifi_ap_scan_req_priority_mac_list(uint32_t mac_cnt, const uint8_t *mac_list /*item of 6 byte in array*/);
+
+
+/**
+ * @brief       Function for bypass mode (for i2c slavle control).
+ *
+ * @return      CWIFI_Result_OK on success. Otherwise an error code(eg.CWIFI_Result_Busy).
+ * @param[callback function]   recv_CB wifi recv data callback
+ * @param[callback function]   noti_CB state notification
+ */
+int cWifi_bypass_req(cWifi_bypass_recv_handler_t recv_CB, cWifi_bypass_noti_callback_t noti_CB);
+
+
+/**
+ * @brief       Function for aborting wifi module
+ */
+void cWifi_abort_req(void);
+
+/**
+ * @brief       Function for status check (bus use check)
+ */
+bool cWifi_bus_busy_check(void);
+
+/**
+ * @brief       Function for status check (scaning state check)
+ */
+bool cWifi_is_scan_state(void);
+
+/**
+ * @brief       Function for status check (woring bypass mode)
+ */
+bool cWifi_is_bypass_state(void);
+
+/**
+ * @brief       Function for status check (available check)
+ */
+bool cWifi_is_detected(void);
+
+/**
+ * @brief       Function for busy check
+ */
+bool cWifi_is_busy(void);
+
+/**
+ * @brief       Function for version check
+ */
+bool cWifi_get_version_info(uint8_t *appVer, uint16_t *initDataVer);
+
+
+/**
+ * @brief       Function for getting scan result.
+ *
+ * @param[out]   bssid pointer of getting bssid
+ *
+ * @return      CWIFI_Result_OK on success. Otherwise an error code(eg.CWIFI_Result_NoData).
+ */
+int cWifi_get_BSSIDs_bufPtr(uint8_t **bssid);  //data buf size is 6byte*getCnt CWIFI_BSSID_CNT*CWIFI_BSSID_SIZE
+
+/**
+ * @brief       Function for getting scan result.
+ *
+ * @param[out]   get_cnt pointer of getting scan count
+ * @param[out]   ssid pointer of getting ssid
+ * @param[out]   rssi pointer of getting rssi
+ * @param[out]   bssid pointer of getting bssid
+ * @return      CWIFI_Result_OK on success. Otherwise an error code
+ */
+int cWifi_get_scan_result(uint32_t *get_cnt, uint8_t **ssid /*CWIFI_SSID_SIZE*/, int32_t **rssi, uint8_t **bssid/*CWIFI_BSSID_SIZE*/);
+int cWifi_get_scan_result_whitelist(uint32_t *get_cnt, uint8_t **ssid /*CWIFI_SSID_SIZE*/, int32_t **rssi, uint8_t **bssid/*CWIFI_BSSID_SIZE*/);
+int cWifi_get_scan_result_hiddenssid(uint32_t *get_cnt, uint8_t **ssid /*CWIFI_SSID_SIZE*/, int32_t **rssi, uint8_t **bssid/*CWIFI_BSSID_SIZE*/);
+
+
+/**
+ * @brief       Function for getting scan result (empty check).
+ *
+ * @return      true : scan result is empty.
+ */
+bool cWifi_BSSID_null_check(void);
+
+#ifdef FEATURE_CFG_BYPASS_CONTROL
+/**
+ * @brief       Function for remapping of bypass buffer
+ * @param[in]   pBuf pointer of bypass buffer. default size is CWIFI_BYPASS_DEFAULT_BUFFER_SIZE
+ * @param[in]   bufSize size of buffer
+ *
+ * @return      boolean
+ */
+bool cWifiState_bypass_buffer_remapping(uint8_t *pBuf, unsigned int bufSize);
+
+/**
+ * @brief       Function for bypass data to wifi module
+ * @param[in]   pData pointer of send data
+ * @param[in]   dataSize size of send data
+ *
+ * @return      boolean result of data send request to wifi module
+ */
+bool cWifiState_bypass_write_request(const char *pData, unsigned int dataSize);
+
+/**
+ * @brief       Function for status check (available check)
+ */
+bool cWifiState_is_bypass_mode(void);
+
+/**
+ * @brief       Function for status check (available cWifiState_bypass_write_request)
+ */
+bool cWifiState_is_bypass_ready(void);
+#endif
+
+/**
+ * @brief       Function for spi resource change WIFI_SPI_INSTANCE
+*/
+void wifi_spi_resource_change_to_TBC_TWIS_INSTANCE(void);
+
+/**
+ * @brief       wifi driver Function for wifi init. use at main()
+ * @return      CWIFI_Result_OK on success 
+ */
+int wifi_drv_init(void);
+/**
+ * @brief       wifi driver Function for wifi scan start. use at main()
+ * @return      CWIFI_Result_OK on success 
+ */
+int start_AP_scan(void); 
+/**
+ * @brief       wifi driver Function for wifi scan start. use at main()
+ * @param[in]   interval (sec 1~60)
+ */
+void set_scan_interval(int interval);
+/**
+ * @brief       wifi driver Function for result of wifi scan. use at main()
+ * @param[out]   get_cnt pointer of getting scan count
+ * @param[out]   ssid pointer of getting ssid
+ * @param[out]   rssi pointer of getting rssi
+ * @param[out]   bssid pointer of getting bssid
+ * @return      CWIFI_Result_OK on success 
+ */
+int get_AP_scanResult(uint32_t *get_cnt, uint8_t **ssid /*CWIFI_SSID_SIZE*/, int32_t **rssi, uint8_t **bssid/*CWIFI_BSSID_SIZE*/);
+//set_power_mode(int mode) //not support
+//Able to join network using credentials supplied by user application.  //not support
+//Able to upload and download data from network.  //not support
+//getter and setter functions compatible with WIFI standard.  //not support
+
+
+void cWifi_bus_enable(bool enable);  //Forcible control can cause wifi module problems.
+
+void cWifi_Set_Scan_Type(CWIFI_SCAN_TYPE_e SCANType);       //It is supported from version 6 (ESP8285 nonos SDK 3.1)
+void cWifi_Set_Channel_Type(CWIFI_CHANNEL_TYPE_e chType);        //It is supported from version 6 (ESP8285 nonos SDK 3.1)
+bool cWifi_Check_N_Update_TxPower(const uint8_t TableVal[6]);
+void cWifi_SetSsidList(uint32_t whiteListCnt, const uint8_t *whiteList /*buf[][SSIDLIST_STR_SIZE_MAX]*/, uint32_t blackListCnt, const uint8_t *blackList/*buf[][SSIDLIST_STR_SIZE_MAX]*/);
+
+#ifdef __cplusplus
+}
+#endif
+#endif // __WBOARD_CONFIG_DEF__

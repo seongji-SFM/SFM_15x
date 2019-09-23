@@ -1,0 +1,62 @@
+********************************************************************************
+공통
+********************************************************************************
+1.펌웨어 write (hex파일을 선택할 수 있도록) - "Verified OK"
+nrfjprog --reset --program SFM20R_factory_AV204_BV1_EVB.hex -f nrf52 --chiperase --verify
+
+2. write가 끝나면 실행결과를 확인하고 성공시 RTTLogger를 실행.
+JLinkRTTLogger.exe < RTTLoggerCfg.cfg
+
+3. 2초 delay후 텟넷접속 시도. 127.0.0.1 port 19021
+  기존 Tool의 접속 절차와 같음.
+
+4. 접속성공시 버젼확인 및 ID확인
+<SC>020A : 버젼 확인
+<SR>000aOKSFM20R_V204_02,build-Sep 26 2017 10:03:08,wifi_010000
+"SFM20R_V204_02,build-Sep 26 2017 10:03:08,wifi_010000" 이 버젼정보.
+버젼정보를 file로 입력받아 비교하도록 하면 좋을듯함.
+여러개의 버젼도 지원했으면 함.
+예)버젼정보파일(2줄)
+SFM20R_V204_02,build-Sep 26 2017 10:03:08,wifi_010000
+SFM20R_V204_02,build-Sep 26 2017 10:03:08,wifi_010001
+
+<SC>0207 : ID확인
+<SR>5407OKEB3439ECDE4F00000000000000000000000000000000600194800F24002BF6D85E5C7CE95F07318123
+
+*필드 정보들
+23 BLE MAC:EB3439ECDE4F
+23 WIFI MAC:600194800F24
+23 SFX ID:002BF6D8
+23 SFX PAC CODE:5E5C7CE95F073181
+
+
+********************************************************************************
+EVB
+********************************************************************************
+5. 물리 입력 테스트 진행
+<SC>04821E : 1E는 timeout (30초)
+ACC : <SR>0d00EVT_ACC_ISR
+WKUP key : <SR>0e00EVT_WKUP_KEY
+자석 : <SR>1000EVT_MAGNET_ATT
+NFC : <SR>0d00EVT_NFC_TAG
+성공: <SR>0d82OKInputTest
+실패: <SR>0d82NGInputTest
+
+6. 센서테스트
+<SC>0683202B
+성공: <SR>0d82OKSenseTest
+실패: <SR>0d82NGSenseTest
+0000는 파일로 입력받음
+202B : bettery level min32,max43
+
+
+7. LED테스트 및 전류테스트
+<SC>0884000000
+성공: <SR>0d82OKLedTest
+실패: <SR>0d82NGLedTest
+체그박스
+*<SC>0884C4C45A  : wifi -60dbm, ble -60dbm, gps 90sec
+*테스트 후 리셋 필요. 마지막 테스트로 진행할것
+
+8. END
+

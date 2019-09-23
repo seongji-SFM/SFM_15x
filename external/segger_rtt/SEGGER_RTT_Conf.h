@@ -88,7 +88,11 @@ Revision: $Rev: 7020 $
 #define BUFFER_SIZE_UP                      (SEGGER_RTT_CONFIG_BUFFER_SIZE_UP)          // Size of the buffer for terminal output of target, up to host (Default: 1k)
 #define BUFFER_SIZE_DOWN                    (SEGGER_RTT_CONFIG_BUFFER_SIZE_DOWN)        // Size of the buffer for terminal input to target from host (Usually keyboard input) (Default: 16)
 
+#ifdef FEATURE_WISOL_DEVICE
+#define SEGGER_RTT_PRINTF_BUFFER_SIZE       (128u)                                       // Size of buffer for RTT printf to bulk-send chars via RTT     (Default: 64)
+#else
 #define SEGGER_RTT_PRINTF_BUFFER_SIZE       (64u)                                       // Size of buffer for RTT printf to bulk-send chars via RTT     (Default: 64)
+#endif
 
 #define USE_RTT_ASM                         (0)                                         // Use assembler version of SEGGER_RTT.c when 1 
 

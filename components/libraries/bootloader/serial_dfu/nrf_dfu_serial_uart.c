@@ -49,6 +49,33 @@
 #include "nrf_balloc.h"
 #include "nrf_drv_uart.h"
 
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER)
+#include "cfg_config_defines.h"
+#include "cfg_dbg_log.h"
+#define Serial_DFU_Developer_logs (0)
+
+#if defined(Serial_DFU_Developer_logs)
+static uint32_t uart_on_rx_complete_cnt = 0;
+#endif
+
+#if defined(FEATURE_DFU_BOTH_BLE_AND_SEIRAL)
+bool nrf_serial_dfu_enable = false;
+#endif
+
+#ifdef FEATURE_DFU_SEIRAL_SPEED_UP
+#define SERIAL_DFU_RX_DATA_BUF_SIZE 4096
+
+static uint8_t serial_dfu_uart_rx_buf[SERIAL_DFU_RX_DATA_BUF_SIZE];
+static uint32_t serial_dfu_uart_rx_idx_wr = 0;
+static uint32_t serial_dfu_uart_rx_idx_rd = 0;
+static uint32_t uart_ring_buf_full_err_cnt = 0;
+static uint32_t uart_rx_cnt = 0;
+static uint32_t uart_err_cnt = 0;
+#endif  //FEATURE_DFU_BOTH_BLE_AND_SEIRAL
+
+
+#endif
+
 #define NRF_LOG_MODULE_NAME nrf_dfu_serial_uart
 #include "nrf_log.h"
 NRF_LOG_MODULE_REGISTER();
@@ -108,7 +135,14 @@ static __INLINE void on_rx_complete(nrf_dfu_serial_t * p_transport, uint8_t * p_
     ret_code_t ret_code;
 
     ret_code = slip_decode_add_byte(&m_slip, p_data[0]);
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER) && defined(FEATURE_DFU_SEIRAL_SPEED_UP)
+#if (Serial_DFU_Developer_logs)
+    uart_on_rx_complete_cnt++;
+#endif
+    //do not call nrf_drv_uart_rx, it's called in uart_event_handler()
+#else
     (void) nrf_drv_uart_rx(&m_uart, &m_rx_byte, 1);
+#endif
 
     if (ret_code == NRF_SUCCESS)
     {
@@ -136,13 +170,59 @@ static void uart_event_handler(nrf_drv_uart_event_t * p_event, void * p_context)
     switch (p_event->type)
     {
         case NRF_DRV_UART_EVT_RX_DONE:
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER) && defined(FEATURE_DFU_SEIRAL_SPEED_UP)
+            {  //put to Ring buffer               
+                uint8_t rx_data;
+                bool b_is_full = false;
+                uint32_t rd_idx, wr_idx, next_wr;
+                rx_data = p_event->data.rxtx.p_data[0];
+                
+                CRITICAL_REGION_ENTER();
+                wr_idx = serial_dfu_uart_rx_idx_wr;
+                rd_idx = serial_dfu_uart_rx_idx_rd;
+                next_wr = wr_idx+1;
+                if(next_wr == SERIAL_DFU_RX_DATA_BUF_SIZE)next_wr=0;
+                if(next_wr == rd_idx)b_is_full = true;
+
+                if(!b_is_full)
+                {
+                    serial_dfu_uart_rx_buf[wr_idx] = rx_data;
+                    serial_dfu_uart_rx_idx_wr = next_wr;
+                }
+                CRITICAL_REGION_EXIT();
+
+                if(b_is_full)
+                {
+#if (Serial_DFU_Developer_logs)
+                    cPrintLog(CDBG_MAIN_LOG, "Buf Full! Full:%d,Rx:%d\n", uart_ring_buf_full_err_cnt, uart_rx_cnt);
+#else
+                    cPrintLog(CDBG_MAIN_LOG, "Buf Full!\n");
+#endif
+                }
+            }
+            (void) nrf_drv_uart_rx(&m_uart, &m_rx_byte, 1);
+#else
             on_rx_complete((nrf_dfu_serial_t*)p_context,
                            p_event->data.rxtx.p_data,
                            p_event->data.rxtx.bytes);
+#endif
             break;
 
         case NRF_DRV_UART_EVT_ERROR:
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER) && defined(FEATURE_DFU_SEIRAL_SPEED_UP)
+            ++uart_err_cnt;
+#if (Serial_DFU_Developer_logs)
+            cPrintLog(CDBG_MAIN_LOG, "UART_ERR err:%d, rx:%d\n",uart_err_cnt, uart_rx_cnt);
+#else
+            if(uart_err_cnt == 1)
+            {
+                cPrintLog(CDBG_MAIN_LOG, "UART_ERR err\n");
+            }
+#endif
+            (void) nrf_drv_uart_rx(&m_uart, &m_rx_byte, 1);
+#else
             APP_ERROR_HANDLER(p_event->data.error.error_mask);
+#endif
             break;
 
         default:
@@ -159,6 +239,13 @@ static uint32_t uart_dfu_transport_init(nrf_dfu_observer_t observer)
     {
         return err_code;
     }
+
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER) && defined(FEATURE_DFU_BOTH_BLE_AND_SEIRAL)
+    if(!nrf_serial_dfu_enable)
+    {
+        return err_code;
+    }
+#endif  
 
     NRF_LOG_DEBUG("serial_dfu_transport_init()");
 
@@ -185,13 +272,21 @@ static uint32_t uart_dfu_transport_init(nrf_dfu_observer_t observer)
     m_serial.p_low_level_transport = &uart_dfu_transport;
 
     nrf_drv_uart_config_t uart_config = NRF_DRV_UART_DEFAULT_CONFIG;
-
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER) && defined(FEATURE_DFU_BOTH_BLE_AND_SEIRAL)
+    uart_config.pseltxd   = PIN_DEF_DTM_TX;
+    uart_config.pselrxd   = PIN_DEF_DTM_RX;
+    uart_config.pselcts   = 0xFFFFFFFF /*UART_PIN_DISCONNECTED*/;
+    uart_config.pselrts   = 0xFFFFFFFF /*UART_PIN_DISCONNECTED*/;
+    uart_config.hwfc      = NRF_UART_HWFC_DISABLED;
+    uart_config.baudrate  = NRF_UART_BAUDRATE_115200;
+#else
     uart_config.pseltxd   = TX_PIN_NUMBER;
     uart_config.pselrxd   = RX_PIN_NUMBER;
     uart_config.pselcts   = CTS_PIN_NUMBER;
     uart_config.pselrts   = RTS_PIN_NUMBER;
     uart_config.hwfc      = NRF_DFU_SERIAL_UART_USES_HWFC ?
                                 NRF_UART_HWFC_ENABLED : NRF_UART_HWFC_DISABLED;
+#endif
     uart_config.p_context = &m_serial;
 
     err_code =  nrf_drv_uart_init(&m_uart, &uart_config, uart_event_handler);
@@ -230,4 +325,34 @@ static uint32_t uart_dfu_transport_close(nrf_dfu_transport_t const * p_exception
 
     return NRF_SUCCESS;
 }
+
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER) && defined(FEATURE_DFU_SEIRAL_SPEED_UP)
+void serial_dfu_nrf_main_handler_process(void)
+{
+    uint8_t rx_data;
+    bool exit_flag = false;
+    while(1)
+    {        
+        uint32_t rd_idx, wr_idx, next_rd;
+        CRITICAL_REGION_ENTER();
+        rd_idx = serial_dfu_uart_rx_idx_rd;
+        wr_idx = serial_dfu_uart_rx_idx_wr;
+        next_rd = rd_idx + 1;
+        if(next_rd == SERIAL_DFU_RX_DATA_BUF_SIZE)next_rd=0;
+        if(rd_idx == wr_idx)  //empty
+        {
+            exit_flag = true;
+        }
+        else  //get from ring buffer
+        {
+            rx_data = serial_dfu_uart_rx_buf[rd_idx];
+            serial_dfu_uart_rx_idx_rd = next_rd;
+        }
+        CRITICAL_REGION_EXIT();
+
+        if(exit_flag)break;
+        on_rx_complete(&m_serial, &rx_data, 1);
+    }
+}
+#endif
 

@@ -44,6 +44,11 @@
 #include "app_util_platform.h"
 #include "nrf_strerror.h"
 
+#if defined(FEATURE_WISOL_DEVICE)
+#include "nrf_delay.h"
+#include "cfg_dbg_log.h"
+#endif
+
 #if defined(SOFTDEVICE_PRESENT) && SOFTDEVICE_PRESENT
 #include "nrf_sdm.h"
 #endif
@@ -60,6 +65,15 @@ __WEAK void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
 
 #ifndef DEBUG
     NRF_LOG_ERROR("Fatal error");
+#if defined(FEATURE_WISOL_DEVICE)
+    cPrintLog(CDBG_MAIN_LOG, "app_error_fault! id: 0x%08x, pc: 0x%08x, info: 0x%08x\n", id, pc, info);
+    if(info)
+    {
+        cPrintLog(CDBG_MAIN_LOG, "info dump 16byte : ");
+        cDataDumpPrintOut(CDBG_MAIN_LOG, info, 16);
+    }
+    nrf_delay_ms(100);
+#endif
 #else
     switch (id)
     {

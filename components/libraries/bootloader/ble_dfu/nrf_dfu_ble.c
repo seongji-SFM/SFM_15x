@@ -58,6 +58,15 @@
 #include "nrf_dfu_settings.h"
 #include "nrf_dfu_ble.h"
 
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER)
+#include "cfg_config_defines.h"
+#include "cfg_dbg_log.h"
+
+#if defined(FEATURE_DFU_BOTH_BLE_AND_SEIRAL)
+bool nrf_ble_dfu_enable = true;
+#endif
+#endif
+    
 #define NRF_LOG_MODULE_NAME nrf_dfu_ble
 #include "nrf_log.h"
 NRF_LOG_MODULE_REGISTER();
@@ -1143,6 +1152,13 @@ uint32_t ble_dfu_transport_init(nrf_dfu_observer_t observer)
     {
         return err_code;
     }
+
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER) && defined(FEATURE_DFU_BOTH_BLE_AND_SEIRAL)
+    if(!nrf_ble_dfu_enable)
+    {
+        return err_code;
+    }
+#endif
 
     NRF_LOG_DEBUG("Initializing BLE DFU transport");
 

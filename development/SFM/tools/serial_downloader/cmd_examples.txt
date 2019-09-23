@@ -1,0 +1,18 @@
+python nordicsemi/__main__.py dfu serial -pkg temp.zip -p COM32 -fc 0
+
+pyinstaller serial_downloader_w.spec
+python nordicsemi/__main_w__.py serial_dfu -pkg temp.zip -p COM32 -fc 0
+python nordicsemi/__main_w__.py bl_ver -p COM32
+python nordicsemi/__main_w__.py dap_ctrl -e 1 -k C277906B -p COM32
+
+sdfu_w serial_dfu -pkg temp.zip -p COM32 -fc 0
+sdfu_w bl_ver -p COM32
+sdfu_w dap_ctrl -e 1 -k C277906B -p COM32
+
+
+1. connect uart pin and check port
+2. run cmd
+3. wait log "Connecting..."
+4. reset target
+
+*key is first 4byte : pk[] in Dfu_public_key.c (development\sigfox_cfg2\source_bootloader_secure\dfu_req_handling)

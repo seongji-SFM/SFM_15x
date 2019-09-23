@@ -1653,6 +1653,23 @@ static void flash_bounds_set(void)
     m_fs.start_addr = m_fs.end_addr - flash_size;
 }
 
+#ifdef FEATURE_WISOL_DEVICE
+void fds_flash_bounds_set(void)
+{
+    flash_bounds_set();
+}
+
+uint32_t fds_flash_start_addr(void)
+{
+    return m_fs.start_addr;
+}
+
+uint32_t fds_flash_end_addr(void)
+{
+    return m_fs.end_addr;
+}
+#endif
+
 
 static ret_code_t flash_subsystem_init(void)
 {

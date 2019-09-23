@@ -1,0 +1,3 @@
+git url : https://github.com/NordicSemiconductor/pc-nrfutil
+  -> git clone https://github.com/NordicSemiconductor/pc-nrfutil
+commit 7f20bb89b1df082990c94bc58ceb26393fe52341

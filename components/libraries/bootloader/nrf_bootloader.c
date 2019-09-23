@@ -59,6 +59,17 @@
 #include "app_scheduler.h"
 #include "nrf_dfu_validation.h"
 
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER)
+#include "cfg_config_defines.h"
+#include "cfg_dbg_log.h"
+#if defined(FEATURE_DFU_BOTH_BLE_AND_SEIRAL)
+extern bool cfg_bl_dfu_check_enter(int reason /*0:normal, 1:invalid app*/);
+#endif
+#if defined(FEATURE_DFU_SEIRAL_SPEED_UP)
+extern void serial_dfu_nrf_main_handler_process(void);
+#endif
+#endif
+
 static nrf_dfu_observer_t m_user_observer; //<! Observer callback set by the user.
 static volatile bool m_flash_write_done;
 
@@ -213,6 +224,10 @@ static void loop_forever(void)
 
         app_sched_execute();
 
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WISOL_BOOTLOADER) && defined(FEATURE_DFU_SEIRAL_SPEED_UP)
+        serial_dfu_nrf_main_handler_process();
+#endif
+
         if (!NRF_LOG_PROCESS())
         {
             wait_for_event();
@@ -349,6 +364,12 @@ static bool dfu_enter_check(void)
     if (!app_is_valid(crc_on_valid_app_required()))
     {
         NRF_LOG_DEBUG("DFU mode because app is not valid.");
+#if defined(FEATURE_DFU_BOTH_BLE_AND_SEIRAL)
+        if (cfg_bl_dfu_check_enter(1))
+        {
+            return true;
+        }
+#endif
         return true;
     }
 
@@ -379,6 +400,13 @@ static bool dfu_enter_check(void)
         NRF_LOG_DEBUG("DFU mode requested via bootloader settings.");
         return true;
     }
+
+#if defined(FEATURE_DFU_BOTH_BLE_AND_SEIRAL)
+    if (cfg_bl_dfu_check_enter(0))
+    {
+        return true;
+    }
+#endif
 
     return false;
 }

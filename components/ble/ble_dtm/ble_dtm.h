@@ -59,7 +59,11 @@ extern "C" {
 
 /**@brief Configuration parameters. */
 #define DTM_BITRATE                     UARTE_BAUDRATE_BAUDRATE_Baud19200   /**< Serial bitrate on the UART */
+#ifdef FEATURE_WISOL_DEVICE
+#define DEFAULT_TX_POWER                RADIO_TXPOWER_TXPOWER_Pos4dBm          /**< Default Transmission power using in the DTM module. */
+#else
 #define DEFAULT_TX_POWER                RADIO_TXPOWER_TXPOWER_0dBm          /**< Default Transmission power using in the DTM module. */
+#endif
 #define DEFAULT_TIMER                   NRF_TIMER0                          /**< Default timer used for timing. */
 #define DEFAULT_TIMER_IRQn              TIMER0_IRQn                         /**< IRQ used for timer. NOTE: MUST correspond to DEFAULT_TIMER. */
 

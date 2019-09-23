@@ -1,0 +1,7 @@
+bin/
+output_files/
+DFU_packages/
+factory_download_images/
+download_APP.cmd
+download_Factory.cmd
+git_commits_*

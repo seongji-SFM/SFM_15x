@@ -1,0 +1,290 @@
+version 1.8
+
+overview
+1. module interface : I2c slave, SWD (Over RTT Viewer)
+2. Host can connect before 2 sec (Unable to connect after)
+  * Mode change time out is 10 seconds.
+3. Data must be case-sensitive
+4. I2C device ID IS 0x4A
+
+work flow
+1. The host periodically reads 64 bytes (I2C Onlu).
+2. 64 bytes are encoded as a string and may not have a NULL value. (End of string in case of NULL)
+3. The basic data is composed of log data and can include a response to the command.
+4. Host -> Module : 
+  Request data starts with <SR> and consists of size (4 bytes), command (2 bytes) and data (variable).
+  Data Layout can be changed according to command.
+5. Module -> Host :
+  Response data consists of size (4 bytes), command (2 bytes), result (2 bytes) Data (variable)
+  Data Layout can be changed according to command.
+
+Data conversion reference
+http://www.rapidtables.com/convert/number/hex-to-ascii.htm  //hex to string
+http://www.rapidtables.com/convert/number/ascii-to-hex.htm  //string to hex
+
+////////////////////////////////////////////////////////////////////////////////
+request
+        |       | ....
+----------------...... 
+<SC>NNCCDDDDDDD... 
+
+layout
+  .NN : length (hexadecimal : %02x)
+  .CC : cmd (hexadecimal : %02x)
+  .DD : data (hexadecimal : variable)
+
+////////////////////////////////////////////////////////////////////////////////
+response
+        |       | ....
+----------------...... <SR>NNCCRRDDDDDDD... 
+
+layout
+  .NN : length  (hexadecimal : %02x)
+  .CC : cmd (hexadecimal : %02x)
+  .RR : Result ("OK" or "NG")
+  .DD : data
+////////////////////////////////////////////////////////////////////////////////
+common msg
+* "<SR>0400NG" : COMMON ERROR
+* "<SR>0D00OKConnected" : Host CONNECT NOTI (for reboot detect!)
+* "<SR>0c00OKManualMode" : Noti FOR GOTO MANUAL MODE (Setting tab)
+* "<SR>1000OKScenarioMode" : Noti FOR GOTO SCENARIO MODE (not support mode change)
+* "<SR>0f00OKSettingMode" : Noti FOR GOTO SETTING (Setting tab, not support mode change)
+* "<SR>NN00OKSNOTI_..." : Noti for statue change
+
+////////////////////////////////////////////////////////////////////////////////
+command
+  0x01 : <SC>0A01NNNNNNNN : set log filter (DATA : old val)
+       eg) <SC>0A0100000000
+           ....<SR>0C02OKNNNNNNNN......
+  0x02 : <SC>0402XX mode change (such as bypass mode) (<SC>0402FF : get current mode)
+      mode : cfg_board_work_normal               = 0x00,  //scenario mode
+             cfg_board_work_sigfox_bypass        = 0x01,
+             cfg_board_work_wifi_bypass          = 0x02,
+             cfg_board_work_manual               = 0x03,
+             cfg_board_work_gps_bypass           = 0x04,
+             cfg_board_work_ble_crtl             = 0x05,  //not used
+             cfg_board_work_acc_bypass           = 0x06,
+
+       eg) <SC>040201 : sigfox bytepass mode
+           ....<SR>0402OK......
+           <SC>0402FF : read current mode
+           ....<SR>0602OK00......
+           <SC>040202 : wifi bytepass mode
+           <SC>040204 : gps bypass
+           <SC>040205 : ble control mode
+           ....
+
+  0x03 : <SC>NN03DDDDDD... : bypass command
+       eg) <SC>0603AT\r\n or 3c53433e3036303341540d0a
+       
+       sigfox
+           <SC>2203AT$SF=000000000000000000000000\r\n or 3c53433e3232303341542453463d3030303030303030303030303030303030303030303030300d0a
+       wifi
+           <SC>0C03AT+CWLAP
+
+    /*setting parameta see module_parameter_item_e in cfg_config_setting.h */
+    module_parameter_item_idle_time                                     =  0,   //MAIN_IDLE_TIME_DEFAULT                            60 ~ 604800(sec, (60*60*24*7 : 1 week))
+    module_parameter_item_beacon_interval                               =  1,   //BEACON_INTERVAL_TIME_DEFAULT                      20 ~ 10240(ms) 
+    module_parameter_item_gps_tracking_time_sec                         =  2,   //CGPS_ACQUIRE_TRACKING_TIME_SEC                    30 ~ 7200(sec)
+    module_parameter_item_log_mask                                      =  3,   //ref CDBGOutMask (debug log mask)                  No value limit
+    module_parameter_item_boot_mode                                     =  4,   //SFM_BOOT_MODE_DEFAULT                             No value limit
+    module_parameter_item_operation_mode                                =  5,   //OPERATION_MODE_DEFAULT                            0 ~ 2  //0 : station mode, 1 : smart tracking mode, , 2 : full tracking mode(It is for engineer mode.)
+    module_parameter_item_gps_enable                                    =  6,   //GPS_ENABLE_DEFAULT                                0 ~ 1
+    module_parameter_item_wifi_enable                                   =  7,   //WIFI_ENABLE_DEFAULT                               0 ~ 1
+    module_parameter_item_ble_beacon_scan_enable                        =  8,   //BLE_BEACON_SCAN_ENABLE_DEFAULT                    0 ~ 1
+    module_parameter_item_acc_operation_mode                            =  9,   //ACC_OPERATION_MODE_DEFAULT                        0 ~ 4  //0:disable, 1: shock, 2: no_motion 3: motion, 4: slope
+    module_parameter_item_magnet_operation_mode                         = 10,   //MAGNET_OPERATION_MODE_DEFAULT                     0 ~ 3  //0:not use, 1: Attach, 2: Detach, 3: both (bit mask)
+    module_parameter_item_sigfox_recv_en                                = 11,   //SIGFOX_RECV_EN_DEFAULT                            0 ~ 1
+    module_parameter_item_key_power_off_lock                            = 12,   //KEY_POWER_OFF_LOCK_DEFAULT                        0 ~ 1
+    module_parameter_item_fota_enable                                   = 13,   //FOTA_ENABLE_DEFAULT                               0 ~ 1
+    module_parameter_item_disable_battery_power_down                    = 14,   //DISABLE_BATTERY_POWER_DOWN_DEFAULT                0 ~ 1
+    module_parameter_item_sigfox_snek_testmode_enable                   = 15,   //SIGFOX_SNEK_TESTMODE_ENABLE_DEFAULT               0 ~ 1
+    module_parameter_item_ambient_light_sensor_enable                   = 16,   //AMBIENT_LIGHT_SENSOR_ENABLE_DEFAULT               0 ~ 1  //0:disable, 1: enable
+    module_parameter_item_ambient_light_sensor_interrupt_mode           = 17,   //AMBIENT_LIGHT_SENSOR_INTERRUPT_MODE_DEFAULT       0 ~ 2  //0:disable, 1: int low 2: int high
+    module_parameter_item_ambient_light_sensor_interrupt_value          = 18,   //AMBIENT_LIGHT_SENSOR_INTERRUPT_VALUE_DEFAULT      0 ~ 10 or 0xFF(not use)
+    module_parameter_item_temperature_sensor_enable                     = 19,   //TEMPERATURE_SENSOR_ENABLE_DEFAULT                 0 ~ 1  //0:disable, 1: enable
+    module_parameter_item_temperature_sensor_interrupt_mode             = 20,   //TEMPERATURE_SENSOR_INTERRUPT_MODE__DEFAULT        0 ~ 3  //0:disable, 1: int low 2: int high, 3: int low & high
+    module_parameter_item_temperature_sensor_high_value                 = 21,   //TEMPERATURE_SENSOR_INTERRUPT_HIGH_VALUE_DEFAULT   -30 ~ 80 'C
+    module_parameter_item_temperature_sensor_low_value                  = 22,   //TEMPERATURE_SENSOR_INTERRUPT_LOW_VALUE_DEFAULT    -30 ~ 80 'C
+    module_parameter_item_gps_operation_mode                            = 23,   //GPS_OPERATION_MODE_DEFAULT                        0 ~ 1 : //0 : smart mode, 1 : manual mode
+    module_parameter_item_sigfox_RC_number                              = 24,   //SIGFOX_RC_NUMBER_DEFAULT
+
+    /* the registers of accelerometer    */
+    module_parameter_item_ctrl_mode_reg                                 = 40,   //No value limit
+    module_parameter_item_bw_u8                                         = 41,   //No value limit
+    module_parameter_item_sleep_durn                                    = 42,   //No value limit
+    module_parameter_item_range_u8                                      = 43,   //No value limit
+    module_parameter_item_interrupt_src                                 = 44,   //No value limit
+    module_parameter_item_thres_u8                                      = 45,   //No value limit
+    module_parameter_item_durn_u8                                       = 46,   //No value limit
+    module_parameter_item_intr_x                                        = 47,   //No value limit
+    module_parameter_item_intr_y                                        = 48,   //No value limit
+    module_parameter_item_intr_z                                        = 49,   //No value limit
+    module_parameter_item_angle                                         = 50,   //No value limit
+
+  0x04 : <SC>NN04NNDDDDDDDD (DATA hexadecimal) : set parameter
+      eg)
+      <SC>0C04000000003C  :  set idle_time to 60
+      <SC>0C040100000064  :  set beacon_interval to 100
+      <SC>0C04020000000A  :  set wifi_scan_retry_time_sec to 10
+      ....<SR>0404OK......
+      
+  0x05 : <SC>NN05NN... : get parameter
+      eg)
+      <SC>040500  :  get idle_time 
+          ....<SR>0C05OK0000003c....  : idle_time is 60 (default)
+      <SC>040501  :  get beacon_interval to 100
+          ....<SR>0C05OK0064....  : beacon_interval is 100 (default)
+      <SC>040502  :  get wifi_scan_retry_time_sec to 10
+          ....<SR>0C05OK0000000a....  : wifi_scan_retry_time_sec is 10 (default)
+      ....<SR>0805OKNNNNNNNN....  (DATA hexadecimal)
+      
+  0x06 : <SC>NN06... : get log filter
+     eg) <SC>0206
+         ....<SR>0C06OK168B6DB7......
+  0x07 : <SC>0207 : get ID information
+       response payload layout: |ble mac(12)|UUID(32)|wifi max(12)|sigfox device ID(8)|sigfox pac code(16)|
+     eg) <SC>0207
+         ....<SR>5407OK..........
+
+  0x08 : <SC>0208 : software reset  //CTBC_CMD_SW_RESET
+
+  0x09 : <SC>0209 : factory reset  //CTBC_CMD_FACTORY_RESET
+
+  0x0A : <SC>020A : get software version  //CTBC_CMD_GET_SW_VERSION
+
+     eg) <SC>020A
+         ....<SR>000aOKSFM20R_V204_01,build-Jun 12 2017 13:55:52,wifi_020101
+
+  0x80~0x9F : user defined command
+
+////////////////////////////////////////////////////////////////////////////////
+Extended commands for RTT (not support over I2C, uppercase, end of line is none)
+"CC" -> Connect PC tool over RTT (Only available early in the boot)
+"CR" -> Target reset
+"CF" -> Change setting value to default
+"CMx" -> Set boot mode (x is value of mode)
+
+
+////////////////////////////////////////////////////////////////////////////////
+user commands
+
+0x80:  //led on
+  <SC>0280
+
+0x81:  //led off
+  <SC>0280
+
+0x82:  //input test
+  <SC>04821E
+    * cmd send and run input (press key, attach magnetic, tagging NFC ...)
+      param : 1E is timeout sec
+
+0x83:  //sensor test (ACC, TMP, ADC ....)
+  <SC>0683202B
+    * param : 202B is Battery Check Min Max (Set to 0000 if not used)
+
+0x84:  //led test
+  <SC>0884000000
+    * wifi AP and BLE beacons must be installed. -> Setting evb to boot mode 8 (send "CM8" over RTT Viewer)
+    * param : 00, 00, 00 -> check for wifi scan rssi, check ble for scan rssi, gps timeout (eg. <SC>0884D3D814)
+    * sigfox is running in CW mode.
+
+0x85:  //set sigfox tx power
+  <SC>04850E
+    * param : 0E is Tx power (14dbm)
+    
+0x86:  //set wifi tx power table
+  <SC>0E863E3E3E3E3E3E
+    * param : 3E, 3E, 3E, 3E, 3E, 3E -> Tx Power Tables
+
+0x87:  //mac list control
+  sub cmd
+  00 : get wifi list cnt
+     cmd : <SC>048700
+     resp eg : <SR>0887OK0064
+  01 : get ble list cnt
+     cmd : <SC>048701
+     resp eg : <SR>0887OK0064
+  02 : get all wifi list
+     cmd : <SC>048702
+     resp eg : 
+	<SR>2487OK0000620194874a00ffffffffffffffff
+        ....
+	<SR>2487OK0063620194874a400237069a079272c4
+	<SR>0f87OKMacListCtrl
+  03 : get all ble list
+     cmd : <SC>048703
+     resp eg : 
+	<SR>2487OK0000e324c230b000ffffffffffffffff
+        ....
+	<SR>2487OK0063e324c230b0320237069a079272c4
+	<SR>0f87OKMacListCtrl
+  04 : get wifi list by index, idx 4 byte(big endian)
+     cmd : <SC>0887040063  -> index 99
+     resp eg : <SR>2487OK0063e324c230b0320237069a079272c4
+  05 : get ble list by index, idx 4 byte(big endian)
+     cmd : <SC>0887050063  -> index 99
+     resp eg : <SR>2487OK0063620194874a400237069a079272c4
+  06 : clear wifi list (not saved)
+     cmd : <SC>048706
+     resp eg : <SR>1187OKWifiRemoveAll
+  07 : clear ble list (not saved)
+     cmd : <SC>048707
+     resp eg : <SR>1087OKBleRemoveAll
+  08 : add wifi list (not saved) eg. mac:620194874a40, pos : "37.160602,127.038148" -> it is wisol position
+     cmd : <SC>248708620194874a4037.160602,127.038148
+     resp eg :
+       OK:
+         <SR>0f87OKWifiAdd0000 : last 4byte - added index
+         <SR>0f87OKMacListCtrl
+       NG:
+         <SR>0b87NGWifiAdd
+         <SR>0f87NGMacListCtrl
+  09 : add ble list (not saved)
+     cmd : <SC>248709620194874a4037.160602,127.038148
+     resp eg :
+       OK:
+         <SR>0e87OKBleAdd0000 : last 4byte - added index
+         <SR>0f87OKMacListCtrl
+       NG:
+         <SR>0a87NGBleAdd
+         <SR>0f87NGMacListCtrl
+  0A : save mac list
+     cmd : <SC>04870A
+     resp eg : <SR>0a87OKUpdate
+  0B : erase all mac list (no resp, do reset)
+     cmd : <SC>04870B
+
+0x88:  //wifi ssid list control
+  ssid list contol example with PC Tools
+    USE SET COMMAND in setting mode
+      1) add white list : <SC>088802*NA*
+      2) add black list  : <SC>0A8806*pt*m*
+      3) save ssid list : <SC>048808 ( *view list :  white <SC>048801, black <SC>048805 )
+  sub cmd
+  00 : get white list cnt
+    cmd : <SC>048800
+  01 : get white list all
+    cmd : <SC>048801
+  02 : add white list
+    cmd : <SC>088802wSJ*
+  03: del white list, idx 4 byte(big endian)
+    cmd : <SC>0888030000
+  04 : get black list cnt
+    cmd : <SC>048804
+  05 : get black list all
+    cmd : <SC>048805
+  06 : add black list
+    cmd : <SC>088806bSJ*
+  07: del white list, idx 4 byte(big endian)
+    cmd : <SC>0888070000
+  08 : save ssid list
+    cmd : <SC>048808
+  09 : erase all white list (not saved)
+    cmd : <SC>048809
+  0a : erase all black list (not saved)
+    cmd : <SC>04880A
+  09 : erase all SSID list (not saved)
+    cmd : <SC>04880B

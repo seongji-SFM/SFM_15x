@@ -51,6 +51,10 @@
 #define USE_TIMER_WORKAROUND
 #endif
 
+#ifdef FEATURE_WISOL_DEVICE
+#include "cfg_dbg_log.h"
+#endif
+
 #ifdef USE_TIMER_WORKAROUND
 #include <nrfx_timer.h>
 
@@ -191,6 +195,10 @@ typedef struct
 } nrfx_nfct_control_block_t;
 
 static nrfx_nfct_control_block_t m_nfct_cb;
+
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WORKAROUND_NFC_CRASH)
+static uint8_t m_nfct_tx_buffer[64];
+#endif
 
 /**
  * @brief Common part of the setup used for the NFCT initialization and reinitialization.
@@ -569,6 +577,9 @@ void nrfx_nfct_rx(nrfx_nfct_data_desc_t const * p_tx_data)
 {
     NRFX_ASSERT(p_tx_data);
 
+#ifdef FEATURE_WISOL_DEVICE
+    cPrintLog(CDBG_BLE_DBG, "NFC Rx Req:%d,%p\n", p_tx_data->data_size, p_tx_data->p_data);
+#endif
     nrf_nfct_rxtx_buffer_set((uint8_t *) p_tx_data->p_data, p_tx_data->data_size);
 
     nrfx_nfct_rxtx_int_enable(NRFX_NFCT_RX_INT_MASK);
@@ -581,12 +592,40 @@ nrfx_err_t nrfx_nfct_tx(nrfx_nfct_data_desc_t const * p_tx_data,
     NRFX_ASSERT(p_tx_data);
     NRFX_ASSERT(p_tx_data->p_data);
 
+#ifdef FEATURE_WISOL_DEVICE
+    cPrintLog(CDBG_BLE_DBG, "NFC Tx Req:%d,%p, delay_mode:%d Data:", p_tx_data->data_size, p_tx_data->p_data, delay_mode);
+    if (p_tx_data->data_size > 0 && p_tx_data->p_data != NULL)
+    {
+        cDataDumpPrintOut(CDBG_BLE_DBG, p_tx_data->p_data, p_tx_data->data_size);
+    }
+#endif
+
     if (p_tx_data->data_size == 0)
     {
         return NRFX_ERROR_INVALID_LENGTH;
     }
 
+#if defined(FEATURE_WISOL_DEVICE) && defined(FEATURE_WORKAROUND_NFC_CRASH)
+    {
+//When Tx Req, Rx Interrupt Occurs Occasionally.
+//At this time, NFC Data is broken.
+        uint8_t * p_tx_data_memory;
+        if(p_tx_data->data_size <= sizeof(m_nfct_tx_buffer))
+        {
+            memcpy((void *)m_nfct_tx_buffer, p_tx_data->p_data, p_tx_data->data_size);
+            p_tx_data_memory = m_nfct_tx_buffer;
+        }
+        else
+        {
+            //cPrintLog(CDBG_BLE_DBG, "NFC Tx Req too big!\n");
+            //NFC Tx Req too big! It can not use workaround!
+            p_tx_data_memory = (uint8_t *) p_tx_data->p_data;
+        }
+        nrf_nfct_rxtx_buffer_set(p_tx_data_memory, p_tx_data->data_size);
+    }
+#else
     nrf_nfct_rxtx_buffer_set((uint8_t *) p_tx_data->p_data, p_tx_data->data_size);
+#endif
     nrf_nfct_tx_bits_set(NRFX_NFCT_BYTES_TO_BITS(p_tx_data->data_size));
     nrf_nfct_frame_delay_mode_set((nrf_nfct_frame_delay_mode_t) delay_mode);
 
