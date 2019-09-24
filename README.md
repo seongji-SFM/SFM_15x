@@ -40,7 +40,7 @@ In addition to them, Seongji SDK has been created into the __development/SFM__ d
   - DFU_packages : DFU package for over-the-air update via BLE
   - factory_download_images : for factory_download
 
-- documentation : Seongji manuals and application notes
+- [documentation](development/SFM/documentation) : Seongji [manuals](development/SFM/documentation/manual/) and application notes
 - demoBootloader : source code for the bootloader (already flashed on the module)
 - demoApp : this is a more complete example. The application starts by broadcasting a BLE beacon. Then it scans WiFi band and sends BSSID with highest RSSI using Sigfox. Afterwards, if a GPS location has been detected it is also sent using Sigfox. This process is repeated every 10 minutes by default.
 - common/src, common/lib : common source files and lib
