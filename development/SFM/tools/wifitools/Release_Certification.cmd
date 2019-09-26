@@ -1,10 +1,18 @@
-mkdir WIFI_Certification
-mkdir WIFI_Certification\Certification_Test
+echo WIFI_Certification V2
+mkdir WIFI_CertificationV2
 
-copy /Y esptool.exe WIFI_Certification\
-copy /Y Certification_Test\* WIFI_Certification\Certification_Test\
+copy /Y esptool.exe WIFI_CertificationV2\
 
-copy /Y Certification_Test_write_CE_Adaptivity.cmd WIFI_Certification\
-copy /Y Certification_Test_write_RF_TEST.cmd WIFI_Certification\
-copy /Y Certification_Test_write_TELEC.cmd WIFI_Certification\
+copy /Y Certification_Test_write_CE_Adaptivity.cmd WIFI_CertificationV2\
+copy /Y Certification_Test_write_RF_TEST.cmd WIFI_CertificationV2\
 
+mkdir WIFI_CertificationV2\WIFI_Certification_ESP_RF_test_tool_v2.0
+copy /Y WIFI_Certification_ESP_RF_test_tool_v2.0\* WIFI_CertificationV2\WIFI_Certification_ESP_RF_test_tool_v2.0\
+mkdir WIFI_CertificationV2\WIFI_Certification_ESP_RF_test_tool_v2.0\bin
+copy /Y WIFI_Certification_ESP_RF_test_tool_v2.0\bin\* WIFI_CertificationV2\WIFI_Certification_ESP_RF_test_tool_v2.0\bin\
+mkdir WIFI_CertificationV2\WIFI_Certification_ESP_RF_test_tool_v2.0\config
+copy /Y WIFI_Certification_ESP_RF_test_tool_v2.0\config\* WIFI_CertificationV2\WIFI_Certification_ESP_RF_test_tool_v2.0\config\
+mkdir WIFI_CertificationV2\WIFI_Certification_ESP_RF_test_tool_v2.0\doc
+copy /Y WIFI_Certification_ESP_RF_test_tool_v2.0\doc\* WIFI_CertificationV2\WIFI_Certification_ESP_RF_test_tool_v2.0\doc\
+mkdir WIFI_CertificationV2\WIFI_Certification_ESP_RF_test_tool_v2.0\image
+copy /Y WIFI_Certification_ESP_RF_test_tool_v2.0\image\* WIFI_CertificationV2\WIFI_Certification_ESP_RF_test_tool_v2.0\image\
