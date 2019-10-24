@@ -349,10 +349,10 @@ void cfg_i2c_master_init(void)
     if(!m_cfg_i2c_master_init_first_flag)
     {
         int CLK_cnt = 8;
-        m_cfg_i2c_master_init_first_flag = true;        
-        nrf_gpio_cfg_input(PIN_DEF_I2CS_I2C0_SDA_DBG, NRF_GPIO_PIN_NOPULL);
+        m_cfg_i2c_master_init_first_flag = true;
+        nrf_gpio_cfg_input(PIN_DEF_I2CM_I2C1_SDA_BLE, NRF_GPIO_PIN_NOPULL);
         nrf_delay_us(100);
-        if(!nrf_gpio_pin_read(PIN_DEF_I2CS_I2C0_SDA_DBG))
+        if(!nrf_gpio_pin_read(PIN_DEF_I2CM_I2C1_SDA_BLE))
         {            
             nrf_gpio_cfg_output(PIN_DEF_I2CM_I2C1_SCL_BLE);
             cPrintLog(CDBG_MAIN_LOG, "=== warning SDA is Low! make CLK, stop ===\n", CLK_cnt);
@@ -366,8 +366,8 @@ void cfg_i2c_master_init(void)
             //make stop condition
             nrf_gpio_pin_write(PIN_DEF_I2CM_I2C1_SCL_BLE, 0);
             nrf_delay_us(50);
-            nrf_gpio_cfg_output(PIN_DEF_I2CS_I2C0_SDA_DBG);
-            nrf_gpio_pin_write(PIN_DEF_I2CS_I2C0_SDA_DBG, 0);
+            nrf_gpio_cfg_output(PIN_DEF_I2CM_I2C1_SDA_BLE);
+            nrf_gpio_pin_write(PIN_DEF_I2CM_I2C1_SDA_BLE, 0);
             nrf_delay_us(50);
             nrf_gpio_pin_write(PIN_DEF_I2CM_I2C1_SCL_BLE, 1);
             nrf_delay_us(100);
@@ -375,7 +375,7 @@ void cfg_i2c_master_init(void)
             nrf_delay_us(100);
             nrf_gpio_pin_write(PIN_DEF_I2CM_I2C1_SCL_BLE, 1);
             nrf_delay_us(50);
-            nrf_gpio_pin_write(PIN_DEF_I2CS_I2C0_SDA_DBG, 1);
+            nrf_gpio_pin_write(PIN_DEF_I2CM_I2C1_SDA_BLE, 1);
             nrf_delay_ms(100);
         }
     }
