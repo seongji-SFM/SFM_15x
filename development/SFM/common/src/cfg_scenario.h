@@ -20,6 +20,7 @@
 #define __CFG_SCENARIO_H__
 
 #include <stdbool.h>
+#include "cfg_config_defines.h"
 
 typedef enum
 {
@@ -51,6 +52,10 @@ typedef enum
     WIFI,
     BLE_SCAN,
     SIGFOX,
+#if defined(CDEV_SIGFOX_MONARCH_MODULE)
+    SIGFOX_CHECK_RUN_SCAN_RC,
+    SIGFOX_SCAN_RC,
+#endif
     IDLE,
     BATTERY_CHECK,
     ALS,             /* NOA1305 Ambient Light Sensor */
@@ -75,11 +80,14 @@ extern bool test_nus_full_tracking_mode;
 extern bool nus_disconnect_reset;
 extern int m_module_waitMS_N_powerdown_req;
 extern bool nus_disconnect_powerdown;
-
-
-#ifndef yepark_check
 extern int main_wakeup_reason;
-#endif
+extern bool main_wkup_key_detected;
+extern bool main_button_detected;
+extern bool main_magnet_detected;
+extern bool main_EXTSEN_ISR_detected;
+extern uint32_t main_Sec_tick;
+extern module_mode_t m_module_mode;
+
 void cfg_scen_wakeup_request(main_wakeup_reason_type reason);
 void cfg_scen_powerdown_request(int delayMS, bool send_poweroff_msg);
 bool cfg_scen_check_sleep_state(void);

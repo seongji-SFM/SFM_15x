@@ -37,15 +37,14 @@
 #include "cfg_twis_board_control.h"
 #include "cfg_external_sense_gpio.h"
 #include "cfg_sigfox_module.h"
-#include "main_demoApp.h"
 #include "cfg_nvm_ctrl.h"
 #include "cfg_ble_ctrl.h"
 #include "cfg_special_boot_mode.h"
 #include "cfg_board_update_wifi_tx_power_tables.h"
 #include "cfg_nRF52_peripherals.h"
 
-const char m_cfg_sw_ver[4] = {CDEV_SW_VER_MAJOR CDEV_SW_VER_MINOR};
-const char m_cfg_model_name[16] = 
+__WEAK const char m_cfg_sw_ver[4] = {CDEV_SW_VER_MAJOR CDEV_SW_VER_MINOR};
+__WEAK const char m_cfg_model_name[16] = 
 {
 #if (CDEV_BOARD_TYPE == CDEV_BOARD_IHERE)
     "iHere"
@@ -70,6 +69,8 @@ static bool m_cfg_i2c_master_init_first_flag = false;
 int m_cfg_comm_pwr_mask = 0;
 const nrf_drv_spi_config_t m_spi_config_default = NRF_DRV_SPI_DEFAULT_CONFIG;
 cfg_board_shutdown_peripherals_func m_cfg_shutdown_peripherals_func = NULL;
+cfg_board_i2c_dev_deepsleep_CB m_cfg_board_shutdown_i2c_dev_func = NULL;
+cfg_board_io_reconfig_deepsleep_CB m_cfg_board_shutdown_io_reconf_func = NULL;
 
 /*****************************************************************************************/
 //It is a variable that can not be located in main.c(It is referred to in several places.)
@@ -210,6 +211,11 @@ void date_time_get_current_time(cfg_date_time_t *tm)
 
 void cfg_board_common_power_control(module_comm_pwr_resource_e resource, bool bOn)
 {
+#ifdef BOARD_FEATURE_USE_WIFI_BLE_RF_SWITCH_GPIOS
+    if(resource == module_comm_pwr_wifi)
+        cfg_board_wifi_rf_enable(bOn);
+#endif
+
     if(bOn)
     {
         if(m_cfg_comm_pwr_mask == 0)
@@ -340,7 +346,11 @@ void cfg_i2c_master_init(void)
     const nrf_drv_twi_config_t twi_config = {
        .scl                = PIN_DEF_I2CM_I2C1_SCL_BLE,
        .sda                = PIN_DEF_I2CM_I2C1_SDA_BLE,
-       .frequency          = NRF_TWI_FREQ_100K,
+#ifdef CFG_I2CM_FREQ_REDEFINE
+       .frequency          = CFG_I2CM_FREQ_REDEFINE,
+#else
+       .frequency          = NRF_TWI_FREQ_400K,
+#endif
        .interrupt_priority = APP_IRQ_PRIORITY_HIGH,
        .clear_bus_init     = false
     };
@@ -385,6 +395,7 @@ void cfg_i2c_master_init(void)
 
     nrf_drv_twi_enable(&m_twi);
     m_cfg_i2c_master_init_flag = true;
+    cPrintLog(CDBG_MAIN_LOG, "m_twi Init\n");
 }
 /**@brief Function for uninitializing I2C in accelerometer.
  *                         
@@ -395,6 +406,7 @@ void cfg_i2c_master_uninit(void)
     nrf_drv_twi_disable(&m_twi);
     nrf_drv_twi_uninit(&m_twi);
     m_cfg_i2c_master_init_flag = false;
+    cPrintLog(CDBG_MAIN_LOG, "m_twi Uninit\n");
 }
 
 uint32_t cfg_i2c_master_send_General_Call_Reset(void)
@@ -411,6 +423,154 @@ uint32_t cfg_i2c_master_send_General_Call_Reset(void)
     nrf_delay_ms(1);
     return NRF_SUCCESS;
 }
+
+#ifdef FEATURE_CFG_USE_I2CM_2nd  //need add TWIS_ENABLED=0;TWIS1_ENABLED=0;TWI1_ENABLED=1 in predefine
+
+#if (TWIS_ENABLED!=0) || (TWIS1_ENABLED!=0) || (TWI1_ENABLED!=1)
+#error "need add TWIS_ENABLED=0;TWIS1_ENABLED=0;TWI1_ENABLED=1 in predefine"
+#endif
+const nrf_drv_twi_t m_twi_2nd = NRF_DRV_TWI_INSTANCE(I2CM_2nd_INSTANCE);
+bool m_cfg_i2c_master_init_flag_2nd = false;
+#ifdef FEATURE_WORKAROUND_I2C_MASTER_SDA_LOW
+static bool m_cfg_i2c_master_init_first_flag_2nd = false;
+#endif
+volatile bool i2c_2nd_xfer_done = false;
+
+static void twi_2nd_handler(nrf_drv_twi_evt_t const * p_event, void * p_context)
+{
+    switch (p_event->type)
+    {
+        case NRF_DRV_TWI_EVT_DONE:
+            switch (p_event->xfer_desc.type )
+            {
+                case NRF_DRV_TWI_XFER_TX :
+                    i2c_2nd_xfer_done = true;
+                    break;
+                case NRF_DRV_TWI_XFER_TXTX: 
+                    i2c_2nd_xfer_done = true; 
+                    break; 
+                case NRF_DRV_TWI_XFER_RX: 
+                    i2c_2nd_xfer_done = true; 
+                    break; 
+                case NRF_DRV_TWI_XFER_TXRX: 
+                    i2c_2nd_xfer_done = true; 
+                    break; 
+                default: 
+                    break; 
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+void cfg_i2c_master_init_2nd(void)
+{
+    ret_code_t err_code;
+
+    const nrf_drv_twi_config_t twi_config = {
+       .scl                = PIN_DEF_I2CM_2nd_SCL,
+       .sda                = PIN_DEF_I2CM_2nd_SDA,
+#ifdef CFG_I2CM_2_FREQ_REDEFINE
+       .frequency          = CFG_I2CM_2_FREQ_REDEFINE,
+#else
+       .frequency          = NRF_TWI_FREQ_400K,
+#endif
+       .interrupt_priority = APP_IRQ_PRIORITY_HIGH,
+       .clear_bus_init     = false
+    };
+
+    if(m_cfg_i2c_master_init_flag_2nd)return;
+#ifdef FEATURE_WORKAROUND_I2C_MASTER_SDA_LOW
+    if(!m_cfg_i2c_master_init_first_flag_2nd)
+    {
+        int CLK_cnt = 8;
+        m_cfg_i2c_master_init_first_flag_2nd = true;
+        nrf_gpio_cfg_input(PIN_DEF_I2CM_2nd_SDA, NRF_GPIO_PIN_NOPULL);
+        nrf_delay_us(100);
+        if(!nrf_gpio_pin_read(PIN_DEF_I2CM_2nd_SDA))
+        {            
+            nrf_gpio_cfg_output(PIN_DEF_I2CM_2nd_SCL);
+            cPrintLog(CDBG_MAIN_LOG, "=== warning I2C_2nd SDA is Low! make CLK, stop ===\n", CLK_cnt);
+            do
+            {
+                nrf_gpio_pin_write(PIN_DEF_I2CM_2nd_SCL, 0);
+                nrf_delay_us(100);
+                nrf_gpio_pin_write(PIN_DEF_I2CM_2nd_SCL, 1);
+                nrf_delay_us(100);
+            }while(--CLK_cnt);
+            //make stop condition
+            nrf_gpio_pin_write(PIN_DEF_I2CM_2nd_SCL, 0);
+            nrf_delay_us(50);
+            nrf_gpio_cfg_output(PIN_DEF_I2CM_2nd_SDA);
+            nrf_gpio_pin_write(PIN_DEF_I2CM_2nd_SDA, 0);
+            nrf_delay_us(50);
+            nrf_gpio_pin_write(PIN_DEF_I2CM_2nd_SCL, 1);
+            nrf_delay_us(100);
+            nrf_gpio_pin_write(PIN_DEF_I2CM_2nd_SCL, 0);
+            nrf_delay_us(100);
+            nrf_gpio_pin_write(PIN_DEF_I2CM_2nd_SCL, 1);
+            nrf_delay_us(50);
+            nrf_gpio_pin_write(PIN_DEF_I2CM_2nd_SDA, 1);
+            nrf_delay_ms(100);
+        }
+    }
+#endif
+    err_code = nrf_drv_twi_init(&m_twi_2nd, &twi_config, twi_2nd_handler, NULL);
+//    APP_ERROR_CHECK(err_code);
+    if(err_code)cPrintLog(CDBG_MAIN_LOG, "Twi2nd Init Err\n");
+
+    nrf_drv_twi_enable(&m_twi_2nd);
+    m_cfg_i2c_master_init_flag_2nd = true;
+    cPrintLog(CDBG_MAIN_LOG, "m_twi_2nd Init\n");
+}
+
+void cfg_i2c_master_uninit_2nd(void)
+{
+    if(!m_cfg_i2c_master_init_flag_2nd)return;
+    nrf_drv_twi_disable(&m_twi_2nd);
+    nrf_drv_twi_uninit(&m_twi_2nd);
+    m_cfg_i2c_master_init_flag_2nd = false;
+    cPrintLog(CDBG_MAIN_LOG, "m_twi_2nd Uninit\n");
+}
+
+uint32_t cfg_i2c_master_send_General_Call_Reset_2nd(void)
+{
+    uint32_t timeout;
+    uint8_t array[4];
+    
+    i2c_2nd_xfer_done = false;
+    timeout = 100000;
+    array[0] = 0x06;
+    APP_ERROR_CHECK(nrf_drv_twi_tx(&m_twi_2nd, 0, array, 1, false));
+    while((!i2c_2nd_xfer_done) && --timeout);
+    if(!timeout) return NRF_ERROR_TIMEOUT;
+    nrf_delay_ms(1);
+    return NRF_SUCCESS;
+}
+
+//dummy function for TWIS_ENABLED=0
+#undef nrf_drv_twis_init
+#undef nrf_drv_twis_uninit
+#undef nrf_drv_twis_enable
+#undef nrf_drv_twis_disable
+#undef nrf_drv_twis_tx_prepare
+#undef nrf_drv_twis_rx_prepare
+
+int nrf_drv_twis_init(const void *a, const void *b, void *c){return -1;}
+void nrf_drv_twis_uninit(const void *a){}
+void nrf_drv_twis_enable(const void *a){}
+void nrf_drv_twis_disable(const void *a){}
+void nrf_drv_twis_tx_prepare(const void *a, void *b, int c){}
+void nrf_drv_twis_rx_prepare(const void *a, void *b, int c){}
+
+int nrfx_twis_init(const void *a, const void *b, void *c){return -1;}
+void nrfx_twis_uninit(const void *a){}
+void nrfx_twis_enable(const void *a){}
+void nrfx_twis_disable(const void *a){}
+void nrfx_twis_tx_prepare(const void *a, void *b, int c){}
+void nrfx_twis_rx_prepare(const void *a, void *b, int c){}
+#endif
 
 static void cfg_board_resource_init(void)
 {
@@ -429,7 +589,7 @@ void cfg_board_check_reset_reason(void)
 
     if(reset_reason & POWER_RESETREAS_RESETPIN_Msk)  //reset pin or power on reset
     {
-        cPrintLog(CDBG_MAIN_LOG, "HW_Reset_Det! (POR)\n");
+        cPrintLog(CDBG_MAIN_LOG, "HW_Reset_Det!\n");
         NRF_POWER->RESETREAS = POWER_RESETREAS_RESETPIN_Msk | POWER_RESETREAS_SREQ_Msk | POWER_RESETREAS_DIF_Msk | POWER_RESETREAS_NFC_Msk | POWER_RESETREAS_OFF_Msk | POWER_RESETREAS_LOCKUP_Msk;
     }
     else
@@ -455,7 +615,7 @@ void cfg_board_check_reset_reason(void)
             m_cfg_NFC_wake_up_detected = true;
         }
 
-        if(reset_reason & POWER_RESETREAS_OFF_Msk || reset_reason == 0)
+        if(reset_reason & POWER_RESETREAS_OFF_Msk)
         {
             cPrintLog(CDBG_MAIN_LOG, "GPIO_Wake_Up_Det\n");
             NRF_POWER->RESETREAS = POWER_RESETREAS_OFF_Msk;
@@ -564,6 +724,11 @@ void cfg_board_gpio_set_default(void)
     nrf_gpio_pin_write(USR_MODULE_GPIO_DEF_LED_2, !USR_MODULE_GPIO_DEF_LED_2_HIGH_TO_ON);
 #endif
 
+#ifdef BOARD_FEATURE_USE_WIFI_BLE_RF_SWITCH_GPIOS
+    nrf_gpio_cfg_output(BOARD_FEATURE_USE_WIFI_BLE_RF_SWITCH_GPIOS);  //ref cfg_board_wifi_rf_enable
+    nrf_gpio_pin_write(BOARD_FEATURE_USE_WIFI_BLE_RF_SWITCH_GPIOS, 0);  //ref cfg_board_wifi_rf_enable
+#endif
+
 }
 
 /**@brief Function for doing power management.
@@ -583,43 +748,8 @@ void cfg_board_indicate_power_down(void)
     }
 }
 
-void cfg_board_prepare_power_down(void)
+void cfg_board_shutdown_gps(void)
 {
-    cPrintLog(CDBG_MAIN_LOG, "prepare power down\n");
-    if(!m_cfg_i2c_master_init_flag)
-        cfg_i2c_master_init();
-    nrf_delay_ms(1);
-    cfg_i2c_master_send_General_Call_Reset();
-    nrf_delay_ms(1);
-#ifdef CDEV_ACC_MODULE
-    cfg_bma250_req_suppend_mode();
-    nrf_delay_ms(1);
-#endif
-
-#if defined(CDEV_TEMPERATURE_SENSOR_TMP102) || defined(CDEV_TEMPERATURE_SENSOR_TMP108)
-    tmp102_req_shutdown_mode();
-    nrf_delay_ms(1);
-#endif
-
-#ifdef CDEV_AMBIENT_LIGHT_SENSOR
-    opt3001_set_shutdown();
-    nrf_delay_ms(1);
-#endif
-    if(m_cfg_i2c_master_init_flag)
-        cfg_i2c_master_uninit();
-    nrf_delay_ms(1);
-    
-    cfg_board_gpio_set_default();
-#ifdef USR_MODULE_FUNCTION_USE_NFC
-    cfg_nfc_uninit();
-#endif
-    nrf_delay_ms(1);
-
-    cfg_board_gpio_set_default_gps(); //gpio relese for gps
-    nrf_delay_ms(1);
-
-    nrf_gpio_cfg_default(PIN_DEF_WKUP);
-
 #ifdef CDEV_GPS_MODULE //stop gps backup battery
     cGps_power_control(false, false);  //gps power off
     nrf_delay_ms(1);
@@ -638,6 +768,39 @@ void cfg_board_prepare_power_down(void)
 
     cfg_board_gpio_set_default_gps(); //gpio relese for gps
 #endif
+}
+
+void cfg_board_prepare_power_down(void)
+{
+    cPrintLog(CDBG_MAIN_LOG, "prepare power down\n");
+    if(!m_cfg_i2c_master_init_flag)
+        cfg_i2c_master_init();
+#ifdef FEATURE_CFG_USE_I2CM_2nd
+    cfg_i2c_master_init_2nd();
+#endif
+
+    if(m_cfg_board_shutdown_i2c_dev_func)
+        m_cfg_board_shutdown_i2c_dev_func();
+
+    if(m_cfg_i2c_master_init_flag)
+        cfg_i2c_master_uninit();
+#ifdef FEATURE_CFG_USE_I2CM_2nd
+    cfg_i2c_master_uninit_2nd();
+#endif
+    nrf_delay_ms(1);
+    
+    cfg_board_gpio_set_default();
+#ifdef USR_MODULE_FUNCTION_USE_NFC
+    cfg_nfc_uninit();
+#endif
+    nrf_delay_ms(1);
+
+    cfg_board_gpio_set_default_gps(); //gpio relese for gps
+    nrf_delay_ms(1);
+
+    nrf_gpio_cfg_default(PIN_DEF_WKUP);
+
+    cfg_board_shutdown_gps();
 
 #if defined(USR_MODULE_GPIO_DEF_WAKEUP_KEY) && defined(USR_MODULE_GPIO_DEF_WAKEUP_KEY_POWERON)
     {
@@ -666,6 +829,8 @@ void cfg_board_prepare_power_down(void)
 #if defined(USR_MODULE_FUNCTION_USE_NFC) && defined(USR_MODULE_FUNCTION_USE_NFC_POWERON)
     NRF_NFCT->TASKS_SENSE = 1;
 #endif
+    if(m_cfg_board_shutdown_io_reconf_func)
+        m_cfg_board_shutdown_io_reconf_func();
 }
 
 bool cfg_board_shutdown_handler(nrf_pwr_mgmt_evt_t event)
@@ -700,6 +865,22 @@ void cfg_board_pwr_mgmt_init(void)
     cPrintLog(CDBG_FCTRL_DBG, "nrf_pwr_mgmt_init:%d\n", ret_code);
 }
 
+#ifdef BOARD_FEATURE_USE_WIFI_BLE_RF_SWITCH_GPIOS
+void cfg_board_wifi_rf_enable(bool enable)
+{
+    if(enable)
+    {
+        nrf_gpio_cfg_output(PIN_DEF_AIN1);
+        nrf_gpio_pin_write(PIN_DEF_AIN1, 1);
+    }
+    else
+    {
+        nrf_gpio_cfg_output(PIN_DEF_AIN1);
+        nrf_gpio_pin_write(PIN_DEF_AIN1, 0);
+    }
+}
+#endif
+
 void cfg_board_early_init(cfg_board_shutdown_peripherals_func shutdown_peripherals_func)
 {
     m_cfg_shutdown_peripherals_func = shutdown_peripherals_func;
@@ -709,19 +890,25 @@ void cfg_board_early_init(cfg_board_shutdown_peripherals_func shutdown_periphera
 #else
     cfg_board_check_wifi_downloadmode();
 #endif
+    cfg_board_check_bootmode_in_register();
 #ifdef FEATURE_CFG_CHECK_NV_BOOT_MODE
-    cfg_board_check_bootmode();
+    cfg_board_check_bootmode_in_flash();
 #endif
     cfg_board_gpio_set_default();
     cfg_board_check_bootloader();
 
     cfg_i2c_master_init();
     cfg_i2c_master_send_General_Call_Reset();
-    
+#ifdef FEATURE_CFG_USE_I2CM_2nd
+    cfg_i2c_master_init_2nd();
+#endif
+
+#ifndef CDEV_DISABLE_ACC_MODULE_LIB
     cfg_bma250_early_init();
 #ifndef CDEV_ACC_MODULE
     cfg_bma250_early_init();
     cfg_bma250_req_suppend_mode();
+#endif
 #endif
 }
 
@@ -730,6 +917,7 @@ void cfg_board_init(void)
     cPrintLog(CDBG_FCTRL_DBG, "%s\n", __func__);
     cfg_board_resource_init();
 
+#ifndef CDEV_DISABLE_ACC_MODULE_LIB
     cfg_bma250_init();
 #ifdef CDEV_ACC_MODULE
     if(cfg_peripheral_device_enable_status_get(PTYPE_ACC))
@@ -741,16 +929,14 @@ void cfg_board_init(void)
         cfg_bma250_req_suppend_mode();
     }
 #endif
+#endif
 
     cfg_board_common_power_control(module_comm_pwr_pon_init, true);
     nrf_delay_ms(2);
 
 #ifdef CDEV_WIFI_MODULE
-    if(cfg_peripheral_device_enable_status_get(PTYPE_WIFI))
-    {
-        cWifi_prepare_start(m_module_peripheral_ID.wifi_MAC_STA);
-        cfg_board_check_update_wifi_tx_pwr_tables();
-    }
+    cWifi_prepare_start(m_module_peripheral_ID.wifi_MAC_STA);
+    cfg_board_check_update_wifi_tx_pwr_tables();
 #endif
 
 #if defined(CDEV_SIGFOX_MODULE) || defined(CDEV_SIGFOX_MONARCH_MODULE)
@@ -760,16 +946,13 @@ void cfg_board_init(void)
 #endif
 
 #ifdef CDEV_GPS_MODULE
-    if(cfg_peripheral_device_enable_status_get(PTYPE_GPS))
-    {
-        cGps_resource_init();
-        cGps_prepare_start();
+    cGps_resource_init();
+    cGps_prepare_start();
 #ifdef FEATURE_HDOP_VALUE_CHECK
-        set_hdop_value_check(CGPS_BELOW_HDOP_9);
+    set_hdop_value_check(CGPS_BELOW_HDOP_9);
 #endif
-    }
-
 #endif /* CDEV_GPS_MODULE */
+
     cfg_board_common_power_control(module_comm_pwr_pon_init, false);
 #ifdef CDEV_RTC2_DATE_TIME_CLOCK
     RTC2_date_time_clock_init_N_start();

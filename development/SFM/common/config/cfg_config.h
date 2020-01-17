@@ -19,6 +19,24 @@
 #ifndef __CFG_CONFIG_H__
 #define __CFG_CONFIG_H__
 
+#if defined ( __CC_ARM )
+    #ifndef __WEAK
+        #define __WEAK              __weak
+    #endif
+#elif defined ( __ICCARM__ )
+    #ifndef __WEAK
+        #define __WEAK              __weak
+    #endif
+#elif defined   ( __GNUC__ )
+    #ifndef __WEAK
+        #define __WEAK              __attribute__((weak))
+    #endif
+#elif defined   ( __TASKING__ )
+    #ifndef __WEAK
+        #define __WEAK              __attribute__((weak))
+    #endif
+#endif
+
 #include "cfg_config_defines.h"
 #include "cfg_config_setting.h"
 #include "cfg_config_app.h"

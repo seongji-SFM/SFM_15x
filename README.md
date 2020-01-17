@@ -7,9 +7,15 @@ The main core of the module is based on the Nordic nRF52832 SOC.
 Seongji has developed an application layer on top of Nordic SDK to interact with all connectivity blocks and sensors. 
 BLE can be directly programmed using Nordic SDK directives as it is embedded into the nRF52 chip.
 - [nRF52 SDK Version Infomation](sdk_version.txt)
+- Projects
+  - development/SFM/demoApp : Basic Demo Application
+  - development/SFM/demoApp_Simple : Simplified demoApp
+  - development/SFM/demoBootloader : Boot Loader with DFU(BLE Fota)
+- Extract of source file for development : run extract_src_files.cmd
+- Delete files created at build time : run remove_unnecessary_files.cmd
 
 # Issue
-- __Acceleration sensor inside the module could be changed after around Q3, 2018 from BMA205E to BMA253.__
+- __Acceleration sensor inside the module could be changed after around Q3, 2018 from BMA250E to BMA253.__
   - BOSH notified E.O.L of the BMA250E in Jan.,2018.
   - Main difference between two parts is resolution of the acceleration. 10bit for BMA250E and 12bit for BMA253.
   - Please refer to the application note for accelerometer. [BMA253_Datasheet](development/SFM/documentation/datasheet/Bosch_01242017_BMA253-1217713.pdf)
@@ -66,6 +72,13 @@ SRM200A : MODEL_NAME to "SRM200" and MODULE_TYPE to CDEV_MODULE_SRM20
 #define CDEV_MODEL_NAME "SFM20R"   //MODEL NAME SIZE IS 6BYTE
 #define CDEV_MODULE_TYPE                        CDEV_MODULE_SFM20R
 #define CDEV_BOARD_TYPE                          CDEV_BOARD_EVB  //REPLACE_DEVICE_DEFINE_HERE
+```
+
+##### There is a batch file to change the target.
+
+```
+eg. SFM20R EVB
+development/SFM/demoApp/changeConfig_SFM20R_EVB.cmd
 ```
 
 ### Flashing the module

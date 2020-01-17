@@ -22,6 +22,8 @@ extern bool ble_connect_on;
 extern bool m_ble_scan_run_flag;
 extern bool m_ble_advertising_req_state;
 extern bool m_ble_advertising_state;
+extern uint32_t m_ble_adv_interval;
+extern uint32_t m_ble_adv_timeout;
 
 typedef enum
 {

@@ -22,11 +22,12 @@
 #include "nrf_drv_gpiote.h"
 #include "nrf_drv_twi.h"
 #include "nrf_sdh.h"
+#include "nrf_power.h"
 
 #include "SEGGER_RTT.h"
 
-#include "cfg_dbg_log.h"
 #include "cfg_config.h"
+#include "cfg_dbg_log.h"
 #include "cfg_wifi_module.h"
 #include "cfg_gps_module.h"
 #include "cfg_twis_board_control.h"
@@ -36,6 +37,7 @@
 #include "cfg_nvm_ctrl.h"
 #include "cfg_ble_ctrl.h"
 #include "cfg_special_boot_mode.h"
+#include "cfg_full_test.h"
 
 extern const nrf_drv_spi_config_t m_spi_config_default;
 
@@ -49,10 +51,10 @@ static uint8_t *m_cfg_board_testmode_rx_buf_rtt;  //down data to rtt
 static uint32_t m_cfg_board_testmode_rx_buf_rtt_idx;  //down data to rtt
 static uint8_t *m_cfg_board_testmode_tx_buf_rtt;  //up data to rtt
 static uint32_t m_cfg_board_testmode_tx_buf_rtt_idx;  //up data to rtt
-static uint8_t *m_cfg_board_testmode_tx_buf_uart_2nd;      //for sigfox uart bridge
-static uint32_t m_cfg_board_testmode_tx_buf_uart_idx_2nd;  //for sigfox uart bridge
-static uint8_t *m_cfg_board_testmode_rx_buf_uart_2nd;      //for sigfox uart bridge
-static uint32_t m_cfg_board_testmode_rx_buf_uart_idx_2nd;  //for sigfox uart bridge
+static uint8_t *m_cfg_board_testmode_tx_buf_uart_2nd;      //for sigfox uart bridge or NUS
+static uint32_t m_cfg_board_testmode_tx_buf_uart_idx_2nd;  //for sigfox uart bridge or NUS
+static uint8_t *m_cfg_board_testmode_rx_buf_uart_2nd;      //for sigfox uart bridge or NUS
+static uint32_t m_cfg_board_testmode_rx_buf_uart_idx_2nd;  //for sigfox uart bridge or NUS
 
 extern int dtm_mode(void);
 static void cfg_board_RTT_read_N_clearCmd_proc(void);
@@ -126,7 +128,6 @@ static void cfg_board_RTT_reset_N_factory_reset_proc(void)
     while(1)
     {
         cfg_board_RTT_read_N_clearCmd_proc();
-
     }
 }
 
@@ -367,8 +368,7 @@ static void cfg_board_bridge_from_RTT_to_uart(uint32_t baud_rate, uint32_t rx_pi
         false,
         UART_BAUDRATE_BAUDRATE_Baud115200
     };
-    unsigned 
-rtt_rd_size;
+    unsigned rtt_rd_size;
     char rtt_rd_bufffer[64];   //check BUFFER_SIZE_DOWN
     int i;
     uint32_t rtt_read_time_out=0;
@@ -677,6 +677,166 @@ static void cfg_board_sigfox_bridge_from_uart(uint32_t baud_rate, uint32_t rx_pi
     }
 }
 
+uint32_t UART2NUS_uartRxBufSize = 0;
+static void cfg_board_testmode_UART2NUS_Recv_handler(const uint8_t * p_data, uint16_t length)
+{
+    int i;
+    if(length == 2 && p_data[0] == 'C' && p_data[1] == 'F')
+    {
+        cfg_nvm_factory_reset(true);  //factory reset work
+    }
+    if(length > 0)
+    {
+        for(i=0; i<length; i++)
+        {
+            app_uart_put(p_data[i]);
+        }
+    }
+}
+
+static void cfg_board_bridge_from_NUS_to_uart_event_handle(app_uart_evt_t * p_event)
+{
+    uint8_t uart_byte;
+    switch (p_event->evt_type)
+    {
+        case APP_UART_DATA_READY:
+            UNUSED_VARIABLE(app_uart_get(&uart_byte));
+            CRITICAL_REGION_ENTER();
+            if(m_cfg_board_testmode_rx_buf_uart_idx < (UART2NUS_uartRxBufSize))
+            {
+                m_cfg_board_testmode_rx_buf_uart[m_cfg_board_testmode_rx_buf_uart_idx++] = uart_byte;
+            }
+            CRITICAL_REGION_EXIT();
+            break;
+
+        case APP_UART_COMMUNICATION_ERROR:
+//            cPrintLog(CDBG_FCTRL_INFO, "NUS_to_uart Commu Err!\n");
+            break;
+
+        case APP_UART_FIFO_ERROR:
+//            cPrintLog(CDBG_FCTRL_INFO, "NUS_to_uart fifo Err!\n");
+            break;
+
+        default:
+            break;
+    }
+}
+
+
+static void cfg_board_bridge_from_NUS_to_uart(uint32_t baud_rate, uint32_t rx_pin_no, uint32_t tx_pin_no)
+{
+    uint32_t                     err_code;
+    app_uart_comm_params_t comm_params =
+    {
+        PIN_DEF_DTM_RX, //RX_PIN_NUMBER,
+        PIN_DEF_DTM_TX,  //TX_PIN_NUMBER,
+        UART_PIN_DISCONNECTED,  //RTS_PIN_NUMBER, //
+        UART_PIN_DISCONNECTED,  //CTS_PIN_NUMBER, //
+        APP_UART_FLOW_CONTROL_DISABLED,
+        false,
+        UART_BAUDRATE_BAUDRATE_Baud115200
+    };
+    unsigned rtt_rd_size;
+    char rtt_rd_bufffer[64];   //check BUFFER_SIZE_DOWN
+    int i;
+    uint32_t rtt_read_time_out=0;
+    uint8_t device_name_buf[32];
+    uint32_t device_name_len;
+    int firstSendBleFlag = 0;
+    int idx, size;
+
+    SEGGER_RTT_printf(0, "cfg_board_bridge_from_NUS_to_uart baud rate:%08x, rx:%d, tx:%d\n", baud_rate, rx_pin_no, tx_pin_no);
+    comm_params.baud_rate = baud_rate;
+    comm_params.rx_pin_no = rx_pin_no;
+    comm_params.tx_pin_no = tx_pin_no;
+
+    //Since the TBC can not be executed, it uses TBC buffers.
+    if((2048 <= CTBC_TX_BUF_SIZE))
+    {
+        extern uint8_t m_cTBC_tx_buf[CTBC_TX_BUF_SIZE];
+        extern uint8_t m_cTBC_bypasscmd_buf[CTBC_BYPASS_CMD_BUF_SIZE];
+        app_uart_buffers_t buffers;
+        UART2NUS_uartRxBufSize = CTBC_TX_BUF_SIZE/2;
+        err_code = app_timer_init();
+        APP_ERROR_CHECK(err_code);
+        cfg_ble_stack_init(NULL);
+        
+        cfg_ble_get_ble_mac_address(m_module_peripheral_ID.ble_MAC);
+        device_name_len = sprintf((char *)device_name_buf, "SFX2NUS_%02x%02x", m_module_peripheral_ID.ble_MAC[4], m_module_peripheral_ID.ble_MAC[5]);
+        cfg_ble_gap_params_init((const uint8_t *)device_name_buf, device_name_len);
+        cfg_ble_peer_manager_init(false);
+        cfg_ble_gatt_init();
+        cfg_ble_services_init(false, true, cfg_board_testmode_UART2NUS_Recv_handler);
+        cfg_ble_advertising_init(MSEC_TO_UNITS(100, UNIT_0_625_MS), BLE_GAP_ADV_TIMEOUT_GENERAL_UNLIMITED, NULL);
+        cfg_ble_conn_params_init();
+
+        m_cfg_board_testmode_rx_buf_uart = &m_cTBC_tx_buf[0];
+
+        //ref APP_UART_FIFO_INIT()
+        buffers.rx_buf      = &m_cTBC_bypasscmd_buf[0];
+        buffers.rx_buf_size = 128;
+        buffers.tx_buf      = &m_cTBC_bypasscmd_buf[128];
+        buffers.tx_buf_size = 128;
+        err_code = app_uart_init(&comm_params, &buffers, cfg_board_bridge_from_NUS_to_uart_event_handle, APP_IRQ_PRIORITY_LOW);
+        APP_ERROR_CHECK(err_code);
+
+        m_cfg_board_testmode_tx_buf_uart_2nd = &m_cTBC_tx_buf[UART2NUS_uartRxBufSize];
+
+        cfg_ble_advertising_start();
+
+        while(1)
+        {
+            if(m_cfg_board_testmode_rx_buf_uart_idx > 0)
+            {
+                CRITICAL_REGION_ENTER();
+                memcpy(m_cfg_board_testmode_tx_buf_uart_2nd, m_cfg_board_testmode_rx_buf_uart, m_cfg_board_testmode_rx_buf_uart_idx);
+                m_cfg_board_testmode_tx_buf_uart_idx_2nd = m_cfg_board_testmode_rx_buf_uart_idx;
+                m_cfg_board_testmode_rx_buf_uart_idx = 0;
+                CRITICAL_REGION_EXIT();
+                if(m_cfg_board_testmode_tx_buf_uart_idx_2nd > 0)
+                {
+                    if(ble_connect_on)
+                    {
+                        if(!firstSendBleFlag)
+                        {
+                            nrf_delay_ms(100);
+                            SEGGER_RTT_printf(0, "====Nus Send====\n");
+                            firstSendBleFlag = 1;
+                        }
+                        idx = 0;
+                        while(m_cfg_board_testmode_tx_buf_uart_idx_2nd-idx > 0)
+                        {
+                            size = ((m_cfg_board_testmode_tx_buf_uart_idx_2nd-idx) > 20)?20:(m_cfg_board_testmode_tx_buf_uart_idx_2nd-idx);
+                            do
+                            {
+                                err_code = cfg_ble_nus_data_send(&m_cfg_board_testmode_tx_buf_uart_2nd[idx], size);
+                                if ((err_code != NRF_ERROR_INVALID_STATE) &&
+                                    (err_code != NRF_ERROR_RESOURCES) &&
+                                    (err_code != NRF_ERROR_NOT_FOUND))
+                                {
+                                    if(err_code != NRF_SUCCESS)
+                                        SEGGER_RTT_printf(0, "GPS2NUS Tx Err:%d\n", err_code);
+                                }
+                            } while (err_code == NRF_ERROR_RESOURCES);
+                            idx += size;
+                        }
+                    }
+                }
+                m_cfg_board_testmode_tx_buf_uart_idx_2nd = 0;
+            }
+            cfg_board_RTT_read_N_clearCmd_proc();
+         }
+    }
+    else
+    {
+        SEGGER_RTT_printf(0, "CTBC_TX_BUF_SIZE(%d) too small!\n", CTBC_TX_BUF_SIZE);
+        while(1)
+        {
+            cfg_board_RTT_read_N_clearCmd_proc();
+        }
+    }
+}
+
 static void cfg_board_testmode_ble(void)
 {
     SEGGER_RTT_printf(0, "====enter ble dtm mode====\n");
@@ -708,6 +868,30 @@ static void cfg_board_testmode_sigfox(void)
     cfg_board_bridge_from_RTT_to_uart(UART_BAUDRATE_BAUDRATE_Baud9600, PIN_DEF_SIGFOX_UART_RX, PIN_DEF_SIGFOX_UART_TX);                
 #endif  
 }
+
+static void cfg_board_testmode_SFX2NUS(void)
+{
+
+    SEGGER_RTT_printf(0, "====enter bypass sigfox to NUS mode====\n");
+    
+    //power enable pin control   
+    cfg_board_common_power_control(module_comm_pwr_sigfox, true);
+    nrf_delay_ms(10);
+    nrf_gpio_cfg_output(PIN_DEF_SIGFOX_PWR_EN);
+    nrf_gpio_pin_write(PIN_DEF_SIGFOX_PWR_EN, 1);
+    nrf_delay_ms(10);  //spec is 4ms
+    nrf_gpio_cfg_input(PIN_DEF_SIGFOX_RESET, NRF_GPIO_PIN_PULLDOWN);
+    nrf_delay_ms(10);
+    nrf_gpio_cfg_input(PIN_DEF_SIGFOX_RESET, NRF_GPIO_PIN_PULLUP);
+    nrf_delay_ms(200);
+
+#if defined(CDEV_SIGFOX_MONARCH_MODULE)
+    cfg_board_bridge_from_NUS_to_uart(UART_BAUDRATE_BAUDRATE_Baud115200, PIN_DEF_SIGFOX_UART_RX, PIN_DEF_SIGFOX_UART_TX);  //CDEV_SIGFOX_MONARCH_MODULE
+#else
+    cfg_board_bridge_from_NUS_to_uart(UART_BAUDRATE_BAUDRATE_Baud9600, PIN_DEF_SIGFOX_UART_RX, PIN_DEF_SIGFOX_UART_TX);
+#endif  
+}
+
 
 #ifdef FEATURE_CFG_CHECK_NV_BOOT_MODE
 #ifdef CDEV_WIFI_MODULE
@@ -839,7 +1023,7 @@ static void cfg_board_testmode_BLE_nus_echo_handler(const uint8_t * p_data, uint
 {
     if(length > 0)
     {
-        cfg_ble_nus_data_send((uint8_t *)p_data, length);        
+        cfg_ble_nus_data_send((uint8_t *)p_data, length);
     }
 }
 
@@ -848,7 +1032,7 @@ static cfg_board_LowPwr_Periodic_1Sec_CB_func m_cfg_LowPwr_periodic_func = NULL;
 
 static void cfg_board_testmode_BLE_timer_handler(void * p_context)
 {
-    (void)p_context;    
+    (void)p_context;
     if(m_cfg_LowPwr_periodic_func)m_cfg_LowPwr_periodic_func();
 }
 
@@ -890,7 +1074,10 @@ void cfg_board_testmode_BLE_Advertising_LowPwr(bool basic_resource_init, bool ad
         cfg_ble_advertising_start();
     }
     app_timer_create(&m_testmode_BLE_timer_id, APP_TIMER_MODE_REPEATED, cfg_board_testmode_BLE_timer_handler);
-    app_timer_start(m_testmode_BLE_timer_id, APP_TIMER_TICKS(1000), NULL);
+    if(cb_func)
+    {
+        app_timer_start(m_testmode_BLE_timer_id, APP_TIMER_TICKS(1000), NULL);
+    }
     if(test_func)test_func();
     
     while(1)
@@ -1082,13 +1269,159 @@ void cfg_board_check_wifi_downloadmode(void)
     }
 }
 
-void cfg_board_check_bootmode(void)
+#ifdef CDEV_GPS_MODULE
+static void cfg_board_testmode_GPS2NUS_Recv_handler(const uint8_t * p_data, uint16_t length)
+{
+    int dataIdx;
+    if(length == 2 && p_data[0] == 'C' && p_data[1] == 'F')
+    {
+        cfg_nvm_factory_reset(true);  //factory reset work
+    }
+
+    if(length > 0)
+    {
+//        SEGGER_RTT_printf(0, "Gps2Nus Recv %d 0x", length);
+        dataIdx = 0;
+        do
+        {
+            SEGGER_RTT_printf(0, "%02x", p_data[dataIdx]);
+        }while(++dataIdx < length);
+        SEGGER_RTT_printf(0, "\n");
+        if(length < 128)
+        {
+            if(m_cfg_board_testmode_rx_buf_uart_idx == 0)
+            {
+                CRITICAL_REGION_ENTER();
+                memcpy(m_cfg_board_testmode_rx_buf_uart, p_data, length);
+                m_cfg_board_testmode_rx_buf_uart_idx = length;
+                CRITICAL_REGION_EXIT();
+            }
+            else
+            {
+                SEGGER_RTT_printf(0, "Buf Busy\n");
+            }
+        }
+        else
+        {
+            SEGGER_RTT_printf(0, "Data Too Big\n");
+        }
+    }
+}
+
+void cfg_board_testmode_GPS2NUS(void)
+{
+    uint32_t                err_code;
+    uint8_t device_name_buf[32];
+    uint32_t device_name_len;
+    nrf_drv_spi_config_t spi_config;
+    extern uint8_t m_cTBC_tx_buf[CTBC_TX_BUF_SIZE];
+    int firstSendBleFlag = 0;
+    int i;
+    int idx, size;
+
+    SEGGER_RTT_printf(0, "====enter GPS2NUS====\n");
+    // Initialize timer module.
+    err_code = app_timer_init();
+    APP_ERROR_CHECK(err_code);
+    cfg_ble_stack_init(NULL);
+
+    cfg_ble_get_ble_mac_address(m_module_peripheral_ID.ble_MAC);
+    device_name_len = sprintf((char *)device_name_buf, "GPS2NUS_%02x%02x", m_module_peripheral_ID.ble_MAC[4], m_module_peripheral_ID.ble_MAC[5]);
+    cfg_ble_gap_params_init((const uint8_t *)device_name_buf, device_name_len);
+    cfg_ble_peer_manager_init(false);
+    cfg_ble_gatt_init();
+    cfg_ble_services_init(false, true, cfg_board_testmode_GPS2NUS_Recv_handler);
+    cfg_ble_advertising_init(MSEC_TO_UNITS(100, UNIT_0_625_MS), BLE_GAP_ADV_TIMEOUT_GENERAL_UNLIMITED, NULL);
+    cfg_ble_conn_params_init();
+    cGps_gpio_init();
+    cGps_power_control(1, 1);  //gps power on
+    cfg_ble_advertising_start();
+
+    memcpy(&spi_config, &m_spi_config_default, sizeof(nrf_drv_spi_config_t));
+    spi_config.ss_pin   = PIN_DEF_GPS_SPI_CS;
+    spi_config.miso_pin = PIN_DEF_GPS_SPI_MISO;
+    spi_config.mosi_pin = PIN_DEF_GPS_SPI_MOSI;
+    spi_config.sck_pin  = PIN_DEF_GPS_SPI_SCK;
+    spi_config.frequency = NRF_DRV_SPI_FREQ_125K;
+    spi_config.mode = NRF_DRV_SPI_MODE_0;
+    spi_config.bit_order = NRF_DRV_SPI_BIT_ORDER_MSB_FIRST;
+    APP_ERROR_CHECK(nrf_drv_spi_init(&m_cfg_board_testmode_gps_Spi, &spi_config, cfg_board_testmode_gps_spi_event_handler, NULL));
+    m_cfg_board_testmode_gps_spi_tx_buf = &m_cTBC_tx_buf[0];
+    m_cfg_board_testmode_gps_spi_rx_buf = &m_cTBC_tx_buf[128];
+    m_cfg_board_testmode_tx_buf_uart = &m_cTBC_tx_buf[256];
+    m_cfg_board_testmode_rx_buf_uart = &m_cTBC_tx_buf[384];
+    memset(m_cfg_board_testmode_gps_spi_tx_buf, 0xff, 128);
+    memset(m_cfg_board_testmode_gps_spi_rx_buf, 0xff, 128);
+    m_cfg_board_testmode_gps_spi_XferDone = false;
+    nrf_drv_spi_transfer(&m_cfg_board_testmode_gps_Spi, m_cfg_board_testmode_gps_spi_tx_buf, 128, m_cfg_board_testmode_gps_spi_rx_buf, 128);
+
+    while(1)
+    {
+        if(m_cfg_board_testmode_gps_spi_XferDone)
+        {
+            memset(m_cfg_board_testmode_tx_buf_uart, 0, 128);
+            m_cfg_board_testmode_tx_buf_uart_idx = 0;
+            for(i=0; i<128; i++)
+            {
+                if(m_cfg_board_testmode_gps_spi_rx_buf[i] != 0xff)
+                {
+                    m_cfg_board_testmode_tx_buf_uart[m_cfg_board_testmode_tx_buf_uart_idx++] = m_cfg_board_testmode_gps_spi_rx_buf[i];
+                }
+            }
+            if(m_cfg_board_testmode_tx_buf_uart > 0)
+            {
+                SEGGER_RTT_printf(0, "%s", m_cfg_board_testmode_tx_buf_uart);
+                if(ble_connect_on)
+                {
+                    if(!firstSendBleFlag)
+                    {
+                        nrf_delay_ms(100);
+                        SEGGER_RTT_printf(0, "====Nus Send====\n");
+                        firstSendBleFlag = 1;
+                    }
+                    idx = 0;
+                    while(m_cfg_board_testmode_tx_buf_uart_idx-idx > 0)
+                    {
+                        size = ((m_cfg_board_testmode_tx_buf_uart_idx-idx) > 20)?20:(m_cfg_board_testmode_tx_buf_uart_idx-idx);
+                        do
+                        {
+                            err_code = cfg_ble_nus_data_send(&m_cfg_board_testmode_tx_buf_uart[idx], size);
+                            if ((err_code != NRF_ERROR_INVALID_STATE) &&
+                                (err_code != NRF_ERROR_RESOURCES) &&
+                                (err_code != NRF_ERROR_NOT_FOUND))
+                            {
+                                if(err_code != NRF_SUCCESS)
+                                    SEGGER_RTT_printf(0, "GPS2NUS Tx Err:%d\n", err_code);
+                            }
+                        } while (err_code == NRF_ERROR_RESOURCES);
+                        idx += size;
+                    }
+                }
+            }
+            memset(m_cfg_board_testmode_gps_spi_tx_buf, 0xff, 128);
+            memset(m_cfg_board_testmode_gps_spi_rx_buf, 0xff, 128);
+            if(m_cfg_board_testmode_rx_buf_uart_idx > 0)
+            {
+                CRITICAL_REGION_ENTER();
+                memcpy(m_cfg_board_testmode_gps_spi_tx_buf, m_cfg_board_testmode_rx_buf_uart, m_cfg_board_testmode_rx_buf_uart_idx);
+                m_cfg_board_testmode_rx_buf_uart_idx = 0;
+                CRITICAL_REGION_EXIT();
+            }
+            m_cfg_board_testmode_gps_spi_XferDone = false;
+            nrf_drv_spi_transfer(&m_cfg_board_testmode_gps_Spi, m_cfg_board_testmode_gps_spi_tx_buf, 128, m_cfg_board_testmode_gps_spi_rx_buf, 128);
+        }
+        cfg_board_RTT_read_N_clearCmd_proc();
+    }
+}
+#endif
+void cfg_board_check_bootmode_in_flash(void)
 {
 #ifdef FEATURE_CFG_CHECK_NV_BOOT_MODE
     int bootmode;
 
     if(module_parameter_get_bootmode(&bootmode))
     {
+        cPrintLog(CDBG_MAIN_LOG, "Enter BMODE_FLS : %d\n", bootmode);
         switch(bootmode)
         {
             case 1:
@@ -1186,10 +1519,94 @@ void cfg_board_check_bootmode(void)
                 cfg_board_testmode_BLE_Advertising_LowPwr(true, true, NULL, NULL);
                 break;
 
+            case 11:  //Bypass for GPS to Nus  //CMB GPS2NUS mode
+                cTBC_setting_erase_wait_for_testmode(3);
+#ifdef CDEV_GPS_MODULE
+                cfg_board_testmode_GPS2NUS();
+#else
+                cfg_board_RTT_reset_N_factory_reset_proc();
+#endif
+                break;
+
+            case 12:  //Bypass for Sigfox to Nus  //CMC SFX2NUS mode
+                cTBC_setting_erase_wait_for_testmode(3);
+#if defined(CDEV_SIGFOX_MODULE) || defined(CDEV_SIGFOX_MONARCH_MODULE)
+                cfg_board_testmode_SFX2NUS();
+#else
+                cfg_board_RTT_reset_N_factory_reset_proc();
+#endif
+                break;
+
             default:
                 break;
         }
     }
 #endif
+}
+
+cfg_bmode_reg_user_defined_func bmode_reg_user_def_func = NULL;
+
+void cfg_board_set_bootmode_in_register_with_ble(boot_mode_in_reg_e mode)
+{
+    uint32_t gpregretVal;
+    uint32_t err_code;
+
+    if(mode == bmode_reg_factory_test_with_ble)
+        gpregretVal = BMODE_REG_GPREGRET | BMODE_REG_MODE_FACTORY_TEST_WITH_BLE;
+    else if(mode == bmode_reg_enter_deep_sleep)
+        gpregretVal = BMODE_REG_GPREGRET | BMODE_REG_MODE_ENTER_DEEP_SLEEP;
+    else if(mode == bmode_reg_user_defined)
+        gpregretVal = BMODE_REG_GPREGRET | BMODE_REG_MODE_USER_DEFINED;
+    else
+        gpregretVal = 0;
+    cPrintLog(CDBG_MAIN_LOG, "bmode_reg to %d [0x%02x]\n", mode, gpregretVal);
+    sd_power_gpregret_clr(0, 0xffffffff);
+    sd_power_gpregret_set(0, gpregretVal);
+}
+
+void cfg_board_check_bootmode_in_register(void)
+{
+    uint8_t             gpregretVal;
+    boot_mode_in_reg_e  mode;
+
+    gpregretVal = nrf_power_gpregret_get();
+
+    if((gpregretVal & BMODE_REG_GPREGRET_MASK) == BMODE_REG_GPREGRET)
+    {
+        nrf_power_gpregret_set(0);
+        if((gpregretVal & BMODE_REG_MODE_BIT_MASK) == BMODE_REG_MODE_FACTORY_TEST_WITH_BLE)
+            mode = bmode_reg_factory_test_with_ble;
+        else if((gpregretVal & BMODE_REG_MODE_BIT_MASK) == BMODE_REG_MODE_ENTER_DEEP_SLEEP)
+            mode = bmode_reg_enter_deep_sleep;
+        else if((gpregretVal & BMODE_REG_MODE_BIT_MASK) == BMODE_REG_MODE_USER_DEFINED)
+            mode = bmode_reg_user_defined;
+        else
+            mode = bmode_reg_none;
+        
+        switch(mode)
+        {
+            case bmode_reg_factory_test_with_ble:
+#ifdef FEATURE_CFG_FULL_TEST_CMD_WITH_BLE_NUS
+                cPrintLog(CDBG_MAIN_LOG, "bmode_reg_full_test_mode enter!\n");
+                cfg_full_test_mode_enter();
+#endif
+                break;
+            case bmode_reg_enter_deep_sleep:
+                cPrintLog(CDBG_MAIN_LOG, "bmode_reg_deep_sleep enter!\n");
+                cfg_board_prepare_power_down();
+                cfg_board_goto_power_down();
+                while(1);
+                break;
+            case bmode_reg_user_defined:
+                if(bmode_reg_user_def_func)
+                {
+                    bmode_reg_user_def_func();
+                }
+                break;
+            default:
+                cPrintLog(CDBG_FCTRL_ERR, "Unknown BMODE_REG : %02x[%d]\n", gpregretVal, (int)mode);
+                break;
+        }
+    }
 }
 

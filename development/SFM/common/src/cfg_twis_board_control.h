@@ -97,6 +97,8 @@ bool cTBC_bypass_mode_is_accbypass(void);
 bool cTBC_bypass_mode_is_setting(void);
 void cTBC_OVER_RTT_init(cTBC_void_run_function_t sec_tick_CB);
 bool cTBC_setting_erase_wait_for_testmode(int timeout_sec);
+unsigned int cTBC_pick_tx_data(char *p_buffer, int num_bytes);
+unsigned int cTBC_pop_tx_data(char *p_buffer, int num_bytes);
 
 #ifdef FEATURE_CFG_DEBUG_OUT_TO_TBC
 int cTBC_vprintf(const char * sFormat, va_list * pParamList);

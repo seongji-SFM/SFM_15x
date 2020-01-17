@@ -15,6 +15,7 @@
 #include "nrf_sdm.h"
 #include "app_error.h"
 #include "app_timer.h"
+#include "SEGGER_RTT.h"
 
 #include "cfg_config.h"
 #include "cfg_dbg_log.h"
@@ -23,13 +24,26 @@
 #include "cfg_nvm_ctrl.h"
 #include "cfg_scenario.h"
 #include "cfg_encode_tx_data.h"
+#include "cfg_special_boot_mode.h"
 
 extern bool m_acc_report_to_nus;
 
 nus_service_parameter_t m_nus_service_parameter;
+
 #ifdef FEATURE_CFG_BLE_UART_CONTROL
 bool m_nus_send_enable = false;
 bool m_nus_service_flag = false;
+bool m_nus_master_unlock = false;
+
+//[[for_nus_logger
+#define BLE_LOGGER_TIMER_INTERVAL_MS 25
+#define BLE_LOGGER_TIMER_DELAY_TICK 40
+APP_TIMER_DEF(m_ble_logger_timer_id);
+static bool m_ble_logger_init_flag = false;
+static bool m_ble_logger_timer_start_stop_flag = false;
+static uint8_t m_ble_logger_timer_delay = 0;
+static uint8_t m_ble_logger_nus_send_buffer[20];
+//]]for_nus_logger
 
 static uint32_t nus_send_id_pac_mac(uint8_t * send_buffer)
 {
@@ -76,6 +90,8 @@ void nus_send_data(char module)
     static uint8_t nus_send_buffer[20];
     int strLen;
     uint32_t      err_code=0;
+    if(m_ble_logger_timer_start_stop_flag)  //for_nus_logger -> not support status report whit NUS(Critical section error in ble_nus_data_send)
+        return;
     memset(nus_send_buffer,0xFF,20);
     if(ble_connect_on && m_nus_send_enable) {
         switch(module)
@@ -169,6 +185,60 @@ void nus_send_data(char module)
     }
 }
 
+//[[for_nus_logger
+void nus_logger_timer_handler(void * p_context)
+{
+    uint16_t send_len;
+    unsigned int cnt;
+    uint32_t err_code;
+
+    if(ble_connect_on)
+    {
+        if(m_ble_logger_timer_delay > BLE_LOGGER_TIMER_DELAY_TICK)
+        {
+            send_len = cTBC_pick_tx_data(m_ble_logger_nus_send_buffer, sizeof(m_ble_logger_nus_send_buffer));
+            if(send_len > 0)
+            {
+                err_code = cfg_ble_nus_data_send(m_ble_logger_nus_send_buffer, send_len);
+                if(err_code == NRF_SUCCESS)
+                {
+                    cTBC_pop_tx_data(m_ble_logger_nus_send_buffer, sizeof(m_ble_logger_nus_send_buffer));
+                }
+            }
+        }
+        else
+        {
+            m_ble_logger_timer_delay++;
+        }
+    }
+    else
+    {
+        if(m_ble_logger_timer_delay)m_ble_logger_timer_delay=0;
+    }
+}
+
+void nus_logger_timer_start_stop_toggle(void)
+{
+    if(!m_ble_logger_init_flag)
+    {
+        APP_ERROR_CHECK(app_timer_create(&m_ble_logger_timer_id, APP_TIMER_MODE_REPEATED, nus_logger_timer_handler));
+        m_ble_logger_init_flag = true;
+    }
+    if(m_ble_logger_timer_start_stop_flag)
+    {
+        APP_ERROR_CHECK(app_timer_stop(m_ble_logger_timer_id));
+        m_ble_logger_timer_start_stop_flag = false;
+        SEGGER_RTT_printf(0, "nus_logger_stop\n");
+    }
+    else
+    {
+        APP_ERROR_CHECK(app_timer_start(m_ble_logger_timer_id, APP_TIMER_TICKS(BLE_LOGGER_TIMER_INTERVAL_MS), NULL));
+        m_ble_logger_timer_start_stop_flag = true;
+        SEGGER_RTT_printf(0, "nus_logger_start\n");
+    }
+}
+//]]for_nus_logger
+
 /**@brief Function for handling the data from the Nordic UART Service.
  *
  * @details This function will process the data received from the Nordic UART BLE Service and send
@@ -181,14 +251,91 @@ void nus_send_data(char module)
 /**@snippet [Handling the data received over BLE] */
 
 static uint8_t m_nus_setting_step = 0;  // 1 step payload size is 16 byte (1+16) -> total data size is 17byte (max data is 20byte)
-void nus_recv_data_handler(const uint8_t * p_data, uint16_t length)
+__WEAK const uint8_t m_nus_master_unlock_code[8] = {0x73, 0x6A, 0x31, 0x39, 0x30, 0x34, 0x30, 0x31};  //"sj190401"
+
+__WEAK void nus_recv_data_handler(const uint8_t * p_data, uint16_t length)
 {
+    static uint8_t nus_send_buffer[20];
     if(length > 0)
     {
         cPrintLog(CDBG_BLE_INFO, "nus_data recv! len:%d, head:%02x\n", length, p_data[0]);
-
         switch(p_data[0])
         {
+            case 'C':
+                if(m_nus_master_unlock)
+                {
+                    if(length == 2 && p_data[1] == 'F')
+                    {
+                        cfg_nvm_factory_reset(true);
+                    }
+                    else if(length == 2 && p_data[1] == 'R')
+                    {
+                        cfg_board_reset();
+                    }
+                    else if(length == 3 && p_data[1] == 'M'
+                        && (
+                               (p_data[2] == 'B')  //CMB GPS2NUS mode 
+                            || (p_data[2] == 'C')  //CMB SFX2NUS mode
+                           )
+                    )
+                    {
+                        module_parameter_set_val(module_parameter_item_boot_mode, (10 + (p_data[2]-'A')));
+                        m_module_parameter_write_N_reset_flag = 1;
+                        module_parameter_update();
+                    }
+                }
+                break;
+
+#ifdef FEATURE_CFG_FULL_TEST_CMD_WITH_BLE_NUS
+            case 'c':
+                if(m_nus_master_unlock)
+                {
+                    boot_mode_in_reg_e mode = bmode_reg_factory_test_with_ble;
+                    if(length == 2 && (p_data[1] >= '0' && p_data[1] <= '9'))
+                    {
+                        mode = p_data[1] - '0';
+                    }
+                    cPrintLog(CDBG_BLE_INFO, "Req BMODE_REG:%d\n", mode);
+                    cfg_board_set_bootmode_in_register_with_ble(mode);
+                    nus_send_data(1);  //TRANSMIT_OK = 1;     devie => phone
+                    nus_disconnect_reset = true;
+                }
+                break;
+
+            case '!':  //full test mode enter
+                if(length == 2)
+                {
+                    switch(p_data[1])
+                    {
+                        case 'c':
+                            cfg_board_set_bootmode_in_register_with_ble(bmode_reg_factory_test_with_ble);
+                            nus_send_data(1);  //TRANSMIT_OK = 1;
+                            nus_disconnect_reset = true;
+                            break;
+
+                        case 'i':
+                            nus_send_buffer[0]='i';
+                            nus_send_buffer[1]=(uint8_t)((m_module_parameter.gps_acquire_tracking_time_sec >> 8) & 0xFF);
+                            nus_send_buffer[2]=(uint8_t)(m_module_parameter.gps_acquire_tracking_time_sec & 0xFF);
+                            nus_send_buffer[3]=0;
+                            cfg_ble_nus_data_send(nus_send_buffer, 4);
+                            break;
+
+                        default:
+                            break;
+                    }
+                }
+                break;
+#endif
+
+            case 'u':
+                if(length == 9 && (memcmp(&p_data[1], m_nus_master_unlock_code, 8) == 0))
+                {
+                    cPrintLog(CDBG_BLE_INFO, "nus_master unlocked!\n");
+                    m_nus_master_unlock = true;
+                }
+                break;
+
             case 'T':
                 nus_send_data('I');
                 cfg_scen_wakeup_request(main_wakeup_reason_normal);
@@ -246,6 +393,16 @@ void nus_recv_data_handler(const uint8_t * p_data, uint16_t length)
             case 'p': //power down when disconnect
                 nus_send_data(1);  //TRANSMIT_OK = 1;     devie => phone
                 nus_disconnect_powerdown = true;
+                break;
+
+            case 'd': //debug for BLE Logger //for_nus_logger
+                if(length == 10 && p_data[1]=='F' && !m_ble_logger_timer_start_stop_flag)  //log filter
+                {
+                    uint32_t log_filter_val;
+                    log_filter_val = cfg_hexadecimal_2_uint_val_big((const char *)&p_data[2], 8);
+                    CDBG_mask_val_set(log_filter_val);
+                }
+                nus_logger_timer_start_stop_toggle();
                 break;
 
             case 1:   //TRANSMIT_SETTINGS_START = 1
@@ -372,7 +529,5 @@ void nus_recv_data_handler(const uint8_t * p_data, uint16_t length)
         }
     }
 }
-/**@snippet [Handling the data received over BLE] */
-
 #endif
 

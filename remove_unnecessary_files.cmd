@@ -3,6 +3,14 @@ RD /Q /S development\SFM\demoApp\pca10040\s132\ses\Output
 DEL /Q development\SFM\demoApp\pca10040\s132\ses\*.jlink
 DEL /Q development\SFM\demoApp\pca10040\s132\ses\*.emSession
 
+RD /Q /S development\SFM\demoApp_Simple\pca10040\s132\ses\Output
+DEL /Q development\SFM\demoApp_Simple\pca10040\s132\ses\*.jlink
+DEL /Q development\SFM\demoApp_Simple\pca10040\s132\ses\*.emSession
+
+RD /Q /S development\SFM\deviceAPP_CN103\pca10040\s132\ses\Output
+DEL /Q development\SFM\deviceAPP_CN103\pca10040\s132\ses\*.jlink
+DEL /Q development\SFM\deviceAPP_CN103\pca10040\s132\ses\*.emSession
+
 RD /Q /S development\SFM\demoBootloader\pca10040\ses\Output
 DEL /Q development\SFM\demoBootloader\pca10040\ses\*.jlink
 DEL /Q development\SFM\demoBootloader\pca10040\ses\*.emSession
@@ -23,3 +31,4 @@ RD /Q /S development\SFM\tools\wifitools\WIFI_Release_SRM200
 RD /Q /S development\SFM\tools\wifitools\WIFI_Certification
 
 RD /Q /S development\SFM\tools\RF_Test\SRM200_EVB\RF_TEST_SRM200A
+DEL /Q development\SFM\tools\nRF52_DK_Images\uart_c_AutoCon\ble_app_uart_c.hex

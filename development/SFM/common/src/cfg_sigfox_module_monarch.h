@@ -119,6 +119,7 @@ typedef enum
     // GET_RX_FREQUENCY_R,
     SCAN_RC_S,
     SCAN_RC_R,
+    SCAN_RC_R2,
     SET_RSSI_S,
     SET_RSSI_R,
     SET_LBT_S,
@@ -141,6 +142,9 @@ extern uint8_t frame_data[(SIGFOX_SEND_PAYLOAD_SIZE*2)+1];  //for hexadecimal
 extern bool scan_rc_parameter;
 extern bool sigfox_rc_checked;
 extern bool sigfox_transmit_fail;
+extern int8_t rssi_data;
+extern bool lbt_error;
+extern bool rc_scan_return_chk;
 
 /**
  * @brief function for powering on sigfox module 

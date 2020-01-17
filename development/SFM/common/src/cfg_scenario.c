@@ -29,6 +29,9 @@
 #include "cfg_config.h"
 #include "cfg_scenario.h"
 #include "cfg_dbg_log.h"
+#include "cfg_ble_ctrl.h"
+#include "cfg_nus_cmd_proc.h"
+#include "cfg_nvm_ctrl.h"
 
 int main_wakeup_reason = main_wakeup_reason_normal;  //main_wakeup_reason_type
 bool main_wakeup_interrupt;
@@ -38,15 +41,34 @@ bool main_powerdown_request = false;
 int m_module_waitMS_N_powerdown_req = 0;
 bool nus_disconnect_powerdown = false;
 static bool main_powerdown_msg_send = false;
+bool main_wkup_key_detected;
+bool main_button_detected;
+bool main_magnet_detected;
+bool main_EXTSEN_ISR_detected;
+uint32_t main_Sec_tick;
+module_peripheral_ID_t m_module_peripheral_ID;
+module_mode_t m_module_mode = NONE;
+int m_module_waitMS_N_reset_req = 0;
+bool m_module_parameter_save_N_reset_req = false;
 
-extern module_mode_t m_module_mode;
 extern void main_set_module_state(module_mode_t state);
 extern module_mode_t main_get_module_state_next(bool normal);
 extern void main_timer_schedule_restart_check_idle(void);
 extern void sigfox_power_on(bool on);
 extern void main_send_poweroff_msg(void);
 
-void cfg_scen_wakeup_request(main_wakeup_reason_type reason)
+__WEAK bool mSTOPmessage = 0;
+__WEAK bool mWifimsg_send = 0;
+__WEAK uint32_t downlink_max = 1;
+
+__WEAK bool main_schedule_state_is_idle(void){return false;}
+__WEAK void main_timer_schedule_restart_check_idle(void){return;}
+__WEAK void main_send_poweroff_msg(void){return;}
+__WEAK void set_motion_state(void){return;}
+__WEAK bool get_no_motion_state(void){return false;}
+__WEAK void set_no_motion_state(void){return;}
+
+__WEAK void cfg_scen_wakeup_request(main_wakeup_reason_type reason)
 {
     if(cfg_scen_check_sleep_state())
     {
@@ -61,7 +83,7 @@ void cfg_scen_wakeup_request(main_wakeup_reason_type reason)
 }
 void cfg_scen_powerdown_request(int delayMS, bool send_poweroff_msg)
 {
-    main_powerdown_request = true;    
+    main_powerdown_request = true;
     m_module_waitMS_N_powerdown_req = delayMS;
     main_powerdown_msg_send = send_poweroff_msg;
 }
@@ -89,7 +111,7 @@ void cfg_scen_main_handler(void)
     {
         cPrintLog(CDBG_MAIN_LOG, "proc powerdown(delay%d)\n", m_module_waitMS_N_powerdown_req);
         if(m_module_waitMS_N_powerdown_req)
-            nrf_delay_ms(m_module_waitMS_N_reset_req);
+            nrf_delay_ms(m_module_waitMS_N_powerdown_req);
         main_powerdown_request = false;
 #ifdef USR_MODULE_GPIO_DEF_BUTTON
         cfg_button_release();
@@ -116,6 +138,26 @@ void cfg_scen_main_handler(void)
         cPrintLog(CDBG_MAIN_LOG, "power off\n");
         cfg_board_goto_power_down();
     }
+
+    if(m_module_parameter_save_N_reset_req)
+    {
+        m_module_parameter_save_N_reset_req = false;
+        module_parameter_update();
+        nrf_delay_ms(1000);
+        cfg_board_reset(); 
+    }
+
+    if(m_module_waitMS_N_reset_req > 0)
+    {
+        nrf_delay_ms(m_module_waitMS_N_reset_req);
+        m_module_waitMS_N_reset_req = 0;
+        cfg_board_reset(); 
+    }
+
+    if(ble_connect_on)
+        m_nus_send_enable = true;
+    else
+        m_nus_send_enable = false;
 
 }
 

@@ -37,8 +37,6 @@
 #include "cfg_opt3001_module.h"
 #include "cfg_tmp102_module.h"
 #include "cfg_nus_cmd_proc.h"
-#include "cfg_scenario.h"
-
 
 static bool m_magnetic_old_status;
 static uint32_t m_magnetic_detect_tick;

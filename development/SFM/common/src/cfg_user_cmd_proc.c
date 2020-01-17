@@ -29,7 +29,6 @@
 #include "cfg_twis_board_control.h"
 #include "cfg_external_sense_gpio.h"
 #include "cfg_sigfox_module.h"
-#include "main_demoApp.h"
 #include "cfg_nvm_ctrl.h"
 #include "cfg_ble_ctrl.h"
 #include "cfg_user_cmd_proc.h"
@@ -39,16 +38,16 @@
 #include "cfg_encode_tx_data.h"
 #include "cfg_adc_battery_check.h"
 #include "cfg_nRF52_peripherals.h"
+#include "cfg_scenario.h"
 
 bool m_hitrun_test_flag = false;
 
-#define USER_COMMAND_PARAM_SIZE_MAX 64
-static int user_cmd_cmd;
-static int user_cmd_param_size;
-static uint8_t user_cmd_param_buf[USER_COMMAND_PARAM_SIZE_MAX];
-static int8_t user_cmd_hitrun_ble_rssi;
+int user_cmd_cmd;
+int user_cmd_param_size;
+uint8_t user_cmd_param_buf[USER_COMMAND_PARAM_SIZE_MAX];
+int8_t user_cmd_hitrun_ble_rssi;
 
-static void user_cmd_hitrun_input_test(void)
+__WEAK void user_cmd_hitrun_input_test(void)
 {
     int int_val;
     int tick_val;
@@ -114,7 +113,7 @@ extern uint32_t tmp102_config_interrupt_test(void);
 extern uint32_t opt3001_interrupt_test(void);
 extern void opt3001_set_read_testmode(void);
 
-static void user_cmd_hitrun_sense_test(void)
+__WEAK void user_cmd_hitrun_sense_test(void)
 {
     bool all_test_OK = true;
     bool test_result;
@@ -294,7 +293,7 @@ static void user_cmd_hitrun_ble_scan_handler(const ble_gap_evt_adv_report_t * p_
     }
 }
 
-static void user_cmd_hitrun_led_test(void)
+__WEAK void user_cmd_hitrun_led_test(void)
 {
     bool all_test_OK = true;
     bool test_result;
@@ -924,6 +923,30 @@ erase all SSID list (not saved) : <SC>04880B
     m_cTBC_dbg_mode_run_func = NULL;
 }
 
+__WEAK void user_cmd_weak_symbol_for_user(void)
+{
+    bool all_test_OK = false;
+    bool cmd_result = false;
+    uint8_t param_bin[32];
+    char noti_str_buf[64];
+    uint8_t cmd;
+    int i;
+
+    if(user_cmd_param_size >= 2)
+    {
+        cfg_hexadecimal_2_bin((const char *)user_cmd_param_buf, 2, param_bin);
+        cmd = param_bin[0];
+        cPrintLog(CDBG_MAIN_LOG, "user weak cmd : 0x%02x, param size:%d\n", cmd, user_cmd_param_size);
+        switch(cmd)
+        {
+            default:
+                break;
+        }
+    }
+    cTBC_usrcmd_msg_noti(user_cmd_cmd, all_test_OK, "USRWEAK");
+    m_cTBC_dbg_mode_run_func = NULL;
+}
+
 void dbg_i2c_user_cmd_proc(int cmd, int param_size, const uint8_t *param)
 {
     cPrintLog(CDBG_MAIN_LOG, "user cmd : 0x%02x, param size:%d\n", cmd, param_size);
@@ -1039,6 +1062,21 @@ void dbg_i2c_user_cmd_proc(int cmd, int param_size, const uint8_t *param)
                 else{user_cmd_param_size = sizeof(user_cmd_param_buf);}
                 if(user_cmd_param_size > 0)memcpy(user_cmd_param_buf, param, user_cmd_param_size);
                 m_cTBC_dbg_mode_run_func = user_cmd_ssid_list_ctrl;
+            }
+            break;
+
+        case 0x89:  //user command weak symbol
+            if(!cTBC_bypass_mode_is_setting() ||  m_cTBC_dbg_mode_run_func)
+            {
+                cTBC_usrcmd_msg_noti(cmd, 0, "Busy");
+            }
+            else
+            {
+                user_cmd_cmd = cmd;
+                if(param_size < sizeof(user_cmd_param_buf)){user_cmd_param_size = param_size;}
+                else{user_cmd_param_size = sizeof(user_cmd_param_buf);}
+                if(user_cmd_param_size > 0)memcpy(user_cmd_param_buf, param, user_cmd_param_size);
+                m_cTBC_dbg_mode_run_func = user_cmd_weak_symbol_for_user;
             }
             break;
 

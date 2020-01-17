@@ -122,6 +122,7 @@ static void module_parameter_default_init(void)
     m_module_parameter.gps_operation_mode = GPS_OPERATION_MODE_DEFAULT;
 #ifdef CDEV_SIGFOX_MONARCH_MODULE
     m_module_parameter.sigfox_RC_number = SIGFOX_RC_NUMBER_DEFAULT;
+    m_module_parameter.sigfox_scan_rc_mode = SIGFOX_SCAN_RC_MODE_DEFAULT;
 #endif
 
     /* the registers of accelerometer    */
@@ -372,6 +373,12 @@ unsigned int module_parameter_get_val(module_parameter_item_e item)
             ret = m_module_parameter.sigfox_RC_number;
 #endif
             break;
+        case module_parameter_item_sigfox_scan_rc_mode:
+#if (CDEV_MODULE_TYPE == CDEV_MODULE_SRM200)  //CDEV_SIGFOX_MONARCH_MODULE
+            ret = m_module_parameter.sigfox_scan_rc_mode;
+#endif
+            break;
+
         case module_parameter_item_ctrl_mode_reg:
             ret = m_module_parameter.ctrl_mode_reg;
             break;
@@ -438,7 +445,7 @@ void module_parameter_set_val(module_parameter_item_e item, unsigned int val)
             cPrintLog(CDBG_MAIN_LOG, "sfm_boot_mode:%d to %d\n", m_module_parameter.boot_mode, val);
             cPrintLog(CDBG_MAIN_LOG, "mode def:0:normal, 1:wifi rf test, 2:wifi always on, 3:ble test, 4:gps test mode\n");
             cPrintLog(CDBG_MAIN_LOG, "mode def:5:wifi rf test bridge from RTT to uart, 6:sigfox over RTT, 7:sigfox over Uart, 8:WIFI AP(SFMTEST0000) and BLE BEACON(SFMTEST0000)\n");
-            cPrintLog(CDBG_MAIN_LOG, "mode def:9:BLE Scan, 10:BLE Advertising\n");
+            cPrintLog(CDBG_MAIN_LOG, "mode def:9:BLE Scan, A:BLE Advertising, B:GPS Bypass over NUS(GPS2NUS), C:Sigfox Bypass over NUS(SFX2NUS)\n");
             m_module_parameter.boot_mode = (uint8_t)val;
             break;
         case module_parameter_item_operation_mode:
@@ -523,6 +530,15 @@ void module_parameter_set_val(module_parameter_item_e item, unsigned int val)
             m_module_parameter.sigfox_RC_number = (uint8_t)val;
 #else
             cPrintLog(CDBG_MAIN_LOG, "sigfox_RC_number Not Support\n");
+#endif
+            break;
+
+        case module_parameter_item_sigfox_scan_rc_mode:
+#ifdef CDEV_SIGFOX_MONARCH_MODULE
+            cPrintLog(CDBG_MAIN_LOG, "sigfox_scan_rc_mode:%d to %d\n", m_module_parameter.sigfox_scan_rc_mode, val);
+            m_module_parameter.sigfox_scan_rc_mode = (uint8_t)val;
+#else
+            cPrintLog(CDBG_MAIN_LOG, "sigfox_scan_rc_mode Not Support\n");
 #endif
             break;
 
@@ -1215,7 +1231,7 @@ bool cfg_nvm_factory_reset(bool sys_reset)  //for factory reset
         if(sys_reset)
         {
             nrf_delay_ms(1000);
-            NVIC_SystemReset();
+            cfg_board_reset();
         }
     }
     else

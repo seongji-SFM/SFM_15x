@@ -33,10 +33,6 @@
 extern "C" {
 #endif
 
-extern volatile bool main_button_detected;
-extern volatile bool main_magnet_detected;
-extern volatile bool main_EXTSEN_ISR_detected;
-extern unsigned int main_Sec_tick;
 
 #ifdef __cplusplus
 }

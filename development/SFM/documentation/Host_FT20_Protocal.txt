@@ -288,3 +288,7 @@ user commands
     cmd : <SC>04880A
   09 : erase all SSID list (not saved)
     cmd : <SC>04880B
+
+0x88:  //user command weak symbol
+  Can be defined and used by the user.
+  see user_cmd_weak_symbol_for_user() in development/SFM/common/src/cfg_user_cmd_proc.c

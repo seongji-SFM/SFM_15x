@@ -61,7 +61,8 @@ typedef enum
     module_parameter_item_temperature_sensor_high_value                 = 21,   //TEMPERATURE_SENSOR_INTERRUPT_HIGH_VALUE_DEFAULT   -30 ~ 80 'C
     module_parameter_item_temperature_sensor_low_value                  = 22,   //TEMPERATURE_SENSOR_INTERRUPT_LOW_VALUE_DEFAULT    -30 ~ 80 'C
     module_parameter_item_gps_operation_mode                            = 23,   //GPS_OPERATION_MODE_DEFAULT                        0 ~ 1 : //0 : smart mode, 1 : manual mode
-    module_parameter_item_sigfox_RC_number                              = 24,   //SIGFOX_RC_NUMBER_DEFAULT
+    module_parameter_item_sigfox_RC_number                              = 24,   //SIGFOX_RC_NUMBER_DEFAULT  //used CDEV_SIGFOX_MONARCH_MODULE
+    module_parameter_item_sigfox_scan_rc_mode                           = 25,   //SIGFOX_SCAN_RC_MODE_DEFAULT  //used CDEV_SIGFOX_MONARCH_MODULE
 
     /* the registers of accelerometer    */
     module_parameter_item_ctrl_mode_reg                                 = 40,   //No value limit

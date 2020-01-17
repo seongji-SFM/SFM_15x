@@ -104,6 +104,8 @@ typedef enum
     RCZ_4
 } sigfox_rcz;
 
+extern uint8_t frame_data[(SIGFOX_SEND_PAYLOAD_SIZE*2)+1];  //for hexadecimal
+
 typedef void (*sigfox_bypass_recv_handler_t)(const uint8_t *p_data, uint32_t data_size);
 typedef void (*sigfox_bypass_noti_callback_t)(bool is_ok, const char *noti_str);
 

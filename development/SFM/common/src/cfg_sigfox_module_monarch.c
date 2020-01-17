@@ -53,7 +53,8 @@
 #ifndef DEVELOP_TIME_TEST
 #define SIGFOX_START_RCZ_SCAN_COMMAND       "node_execute_monarch_scan 0x3F 6 2"
 #else
-#define SIGFOX_START_RCZ_SCAN_COMMAND       "node_execute_monarch_scan 0x3F 1 1"
+// #define SIGFOX_START_RCZ_SCAN_COMMAND       "node_execute_monarch_scan 0x3F 1 1"
+#define SIGFOX_START_RCZ_SCAN_COMMAND       "node_execute_monarch_scan 0x3F 6 2"
 #endif
 #define SIGFOX_STOP_RCZ_SCAN_COMMAND        "node_stop_monarch_scan"
 #define SIGFOX_RCZ_OPEN_COMMAND             "node_open_with_zone"
@@ -114,6 +115,11 @@ bool sigfox_transmit_fail = false;
 bool received_ok;
 bool received_fail;
 bool data_received;
+bool rssi_ok;
+int8_t rssi_data;
+bool rc_scan_return_chk;
+bool lbt_error;
+
 #define UART_TX_BUF_SIZE                256                                         /**< UART TX buffer size. */
 #define UART_RX_BUF_SIZE                256                                         /**< UART RX buffer size. */
 
@@ -121,15 +127,17 @@ bool data_received;
 
 #define ONE_DAY_SEC (60*60*24)
 
-#define SFX_SETUP_TIMEOUT    5*2               // 2sec
+#define SFX_SETUP_TIMEOUT    5*5               // 5sec
 #define SFX_TRANSMIT_TIMEOUT    5*25                // 25 Sec
 #define SFX_TRANSMIT_DN_TIMEOUT 5*60      // 1min
 #define SFX_RC_SCAN_TIMEOUT     5*(60*5+12)      // 5min 12sec
 
 APP_TIMER_DEF(m_sigfox_timer_id);                        /**SIGFOX timer. */
 uint8_t frame_data[(SIGFOX_SEND_PAYLOAD_SIZE*2)+1];  //for hexadecimal
+uint8_t frame_data1[(SIGFOX_SEND_PAYLOAD_SIZE*2)+1];  //for hexadecimal
 
 uint8_t downlink_data[40];
+uint8_t rssi_downlink_data[40];
 uint8_t downlink_data_size;
 uint8_t downlink_convert[8];
 
@@ -182,13 +190,13 @@ void sigfox_hexdigit_to_hexnum(uint8_t* dec, uint8_t* src, uint8_t size)
 
 void cfg_sigfox_prepare_start(void)
 {
-    m_get_parameter = true;
-    cfg_sigfox_timer_create();
-    sigfox_set_state(SETUP_S);
-    cfg_sigfox_timers_start();
-    while(m_get_parameter);
-    cfg_sigfox_timers_stop();
-    sigfox_set_state(SETUP_S);
+	m_get_parameter = true;
+	cfg_sigfox_timer_create();
+	sigfox_set_state(SETUP_S);
+	cfg_sigfox_timers_start();
+	while(m_get_parameter);
+	cfg_sigfox_timers_stop();
+	sigfox_set_state(SETUP_S);
 }
 
 //power on delay tuning
@@ -217,7 +225,7 @@ static void __sigfox_power_off(void)
     nrf_gpio_pin_write(PIN_DEF_SIGFOX_PWR_EN, 0);
 //    nrf_gpio_cfg_output(PIN_DEF_SIGFOX_RESET);
 //    nrf_gpio_pin_write(PIN_DEF_SIGFOX_RESET, 0);
-    nrf_gpio_cfg_input(PIN_DEF_SIGFOX_RESET, NRF_GPIO_PIN_PULLDOWN);
+    nrf_gpio_cfg_default(PIN_DEF_SIGFOX_RESET);  //reset pin control with open_drain
     cfg_board_common_power_control(module_comm_pwr_sigfox, false);
 }
 //power on delay tuning
@@ -243,7 +251,7 @@ void sigfox_power_on(bool on)
             nrf_gpio_cfg_input(PIN_DEF_SIGFOX_RESET, NRF_GPIO_PIN_PULLDOWN);
             nrf_delay_ms(10);
 //            nrf_gpio_pin_write(PIN_DEF_SIGFOX_RESET, 1);
-            nrf_gpio_cfg_input(PIN_DEF_SIGFOX_RESET, NRF_GPIO_PIN_PULLUP);
+            nrf_gpio_cfg_default(PIN_DEF_SIGFOX_RESET);  //reset pin control with open_drain
 
             nrf_delay_ms(SIGFOX_DELAY_FOR_UART_INIT);
             //bus init
@@ -380,10 +388,10 @@ void sigfox_Send_Command(void)
     switch( m_sigfox_cmd ) 
     {
         case SIGFOX_OPEN_CMD: 
-            sprintf((char*)send,"%s %d\r\n",SIGFOX_RCZ_OPEN_COMMAND,module_parameter_get_val(module_parameter_item_sigfox_RC_number)) ; 
+        	sprintf((char*)send,"%s %d\r\n",SIGFOX_RCZ_OPEN_COMMAND,module_parameter_get_val(module_parameter_item_sigfox_RC_number)) ; 
             break;
         case SIGFOX_SCAN_RC_CMD:
-            sprintf((char*)send,"%s\r\n",SIGFOX_START_RCZ_SCAN_COMMAND);
+        	sprintf((char*)send,"%s\r\n",SIGFOX_START_RCZ_SCAN_COMMAND) ; 
             break;
         case SIGFOX_SET_STD_CMD:
         {
@@ -391,16 +399,16 @@ void sigfox_Send_Command(void)
                 case 1: 
                     return;
                 case 2: 
-                    sprintf((char*)send,"%s 0x%X 0x%X 0x%X %d\r\n",SIGFOX_RCZ_STD_CONFIG_COMMAND,RC2_SET_STD_CONFIG_WORD_0,RC2_SET_STD_CONFIG_WORD_1,RC2_SET_STD_CONFIG_WORD_2,RC2_SET_STD_TIMER); 
+        	        sprintf((char*)send,"%s 0x%X 0x%X 0x%X %d\r\n",SIGFOX_RCZ_STD_CONFIG_COMMAND,RC2_SET_STD_CONFIG_WORD_0,RC2_SET_STD_CONFIG_WORD_1,RC2_SET_STD_CONFIG_WORD_2,RC2_SET_STD_TIMER); 
                 break;
                 case 3: 
-                    sprintf((char*)send,"%s 0x%X 0x%X 0x%X %d\r\n",SIGFOX_RCZ_STD_CONFIG_COMMAND,RC3_SET_STD_CONFIG_WORD_0,RC3_SET_STD_CONFIG_WORD_1,RC3_SET_STD_CONFIG_WORD_2,RC3_SET_STD_TIMER); 
+        	        sprintf((char*)send,"%s 0x%X 0x%X 0x%X %d\r\n",SIGFOX_RCZ_STD_CONFIG_COMMAND,RC3_SET_STD_CONFIG_WORD_0,RC3_SET_STD_CONFIG_WORD_1,RC3_SET_STD_CONFIG_WORD_2,RC3_SET_STD_TIMER); 
                 break;
                 case 4: 
-                    sprintf((char*)send,"%s 0x%X 0x%X 0x%X %d\r\n",SIGFOX_RCZ_STD_CONFIG_COMMAND,RC4_SET_STD_CONFIG_WORD_0,RC4_SET_STD_CONFIG_WORD_1,RC4_SET_STD_CONFIG_WORD_2,RC4_SET_STD_TIMER); 
+        	        sprintf((char*)send,"%s 0x%X 0x%X 0x%X %d\r\n",SIGFOX_RCZ_STD_CONFIG_COMMAND,RC4_SET_STD_CONFIG_WORD_0,RC4_SET_STD_CONFIG_WORD_1,RC4_SET_STD_CONFIG_WORD_2,RC4_SET_STD_TIMER); 
                 break;
                 case 5: 
-                    sprintf((char*)send,"%s 0x%X 0x%X 0x%X %d\r\n",SIGFOX_RCZ_STD_CONFIG_COMMAND,RC5_SET_STD_CONFIG_WORD_0,RC5_SET_STD_CONFIG_WORD_1,RC5_SET_STD_CONFIG_WORD_2,RC5_SET_STD_TIMER); 
+        	        sprintf((char*)send,"%s 0x%X 0x%X 0x%X %d\r\n",SIGFOX_RCZ_STD_CONFIG_COMMAND,RC5_SET_STD_CONFIG_WORD_0,RC5_SET_STD_CONFIG_WORD_1,RC5_SET_STD_CONFIG_WORD_2,RC5_SET_STD_TIMER); 
                 break;
                 case 6: 
                     return;
@@ -410,74 +418,74 @@ void sigfox_Send_Command(void)
         }
         break;
         case SIGFOX_SF_CMD : 
-            sprintf((char*)send,"%s {%s} %d 0\r\n", SIGFOX_SF_COMMAND,frame_data,UPLINK_REPEAT); 
-            cPrintLog(CDBG_SIGFOX_INFO, "sigfox send frame request %s", send);
-            break ;  
-        case SIGFOX_SF_R_CMD :
-            sprintf((char*)send,"%s {%s} %d 1\r\n", SIGFOX_SF_COMMAND,frame_data,UPLINK_REPEAT); 
-            cPrintLog(CDBG_SIGFOX_INFO, "sigfox send frame request %s", send);
-            break;
+        	sprintf((char*)send,"%s {%s} %d 0\r\n", SIGFOX_SF_COMMAND,frame_data,UPLINK_REPEAT); 
+        	cPrintLog(CDBG_SIGFOX_INFO, "sigfox send frame request %s", send);
+        	break ;  
+		case SIGFOX_SF_R_CMD :
+        	sprintf((char*)send,"%s {%s} %d 1\r\n", SIGFOX_SF_COMMAND,frame_data,UPLINK_REPEAT); 
+        	cPrintLog(CDBG_SIGFOX_INFO, "sigfox send frame request %s", send);		
+			break;
         case SIGFOX_SB_CMD : 
-            sprintf((char*)send,"%s %s %d 0\r\n", SIGFOX_SB_COMMAND,frame_data,UPLINK_REPEAT); 
-            cPrintLog(CDBG_SIGFOX_INFO, "sigfox send bit request %s", send);
-            break ;  
-        case SIGFOX_SB_R_CMD :
-            sprintf((char*)send,"%s %s %d 1\r\n", SIGFOX_SB_COMMAND,frame_data,UPLINK_REPEAT); 
-            cPrintLog(CDBG_SIGFOX_INFO, "sigfox send bit request %s", send);
-            break;
+        	sprintf((char*)send,"%s %s %d 0\r\n", SIGFOX_SB_COMMAND,frame_data,UPLINK_REPEAT); 
+        	cPrintLog(CDBG_SIGFOX_INFO, "sigfox send bit request %s", send);
+        	break ;  
+		case SIGFOX_SB_R_CMD :
+        	sprintf((char*)send,"%s %s %d 1\r\n", SIGFOX_SB_COMMAND,frame_data,UPLINK_REPEAT); 
+        	cPrintLog(CDBG_SIGFOX_INFO, "sigfox send bit request %s", send);		
+			break;
         // case SIGFOX_OOB_CMD:
-            // break;
+        	// break;
         case SIGFOX_SET_PUBLIC_CMD:
-            sprintf((char*)send,"%s 1\r\n",SIGFOX_SWITCH_PUBLIC_KEY_COMMAND); 
+        	sprintf((char*)send,"%s 1\r\n",SIGFOX_SWITCH_PUBLIC_KEY_COMMAND); 
             break;
         // case SIGFOX_POWERMODE_CMD : 
             // sprintf((char*)send, SIGFOX_POWERMODE_COMMAND) ; 
-            // break;
-        // case SIGFOX_BREAK_CMD:
-        // sprintf((char*)send, SIGFOX_BREAK_COMMAND);
-        // break;
-        // case SIGFOX_SNEK_CMD:
-        // sprintf((char*)send, SIGFOX_SNEK_COMMAND);
-        // break;
-        case SIGFOX_GET_ID_CMD:
-            sprintf((char*)send,"%s\r\n",SIGFOX_GET_ID_COMMAND);
-            break;
-        case SIGFOX_GET_PACCODE_CMD:
-            sprintf((char*)send,"%s\r\n",SIGFOX_GET_PAC_COMMAND);
-            break;
-        // case SIGFOX_CHECK_CHANNEL_CMD:
-        // sprintf((char*)send, SIGFOX_CHECK_CHANNEL_COMMAND);
-        // break;
-        // case SIGFOX_RESET_CHANNEL_CMD:
-        // sprintf((char*)send, SIGFOX_RESET_CHANNEL_COMMAND);
-        // break;
-        // case SIGFOX_FREQUENCY_CMD:
-        // sprintf((char*)send, SIGFOX_FREQUENCY_COMMAND);
-        // break;
-        case SIGFOX_SET_POWERLEVEL_CMD:
-            sprintf((char*)send,"%s %d\r\n",SIGFOX_REDUCE_POWERLEVEL_COMMAND,m_powerlevel);
-            break;
-        // case SIGFOX_SAVE_CONFIG_CMD:
-        // sprintf((char*)send, SIGFOX_SAVE_CONFIG_COMMAND);
-        // break;
-        case SIGFOX_STOP_MESSAGE_CMD : 
-            sprintf((char*)send,"%s\r\n",SIGFOX_STOP_MESSAGE_COMMAND) ;
-            cPrintLog(CDBG_SIGFOX_INFO, "sigfox send request %s", send);
-            break;
-        // case SIGFOX_RX_FREQUENCY_CMD:
-        // sprintf((char*)send, SIGFOX_RX_FREQUENCY_COMMAND);
-        // break;
+            // break ;	
+		// case SIGFOX_BREAK_CMD:
+			// sprintf((char*)send, SIGFOX_BREAK_COMMAND);
+			// break;
+		// case SIGFOX_SNEK_CMD:
+			// sprintf((char*)send, SIGFOX_SNEK_COMMAND);
+			// break;			
+		case SIGFOX_GET_ID_CMD:
+			sprintf((char*)send,"%s\r\n",SIGFOX_GET_ID_COMMAND);
+			break;
+		case SIGFOX_GET_PACCODE_CMD:
+			sprintf((char*)send,"%s\r\n",SIGFOX_GET_PAC_COMMAND);
+			break;
+		// case SIGFOX_CHECK_CHANNEL_CMD:
+			// sprintf((char*)send, SIGFOX_CHECK_CHANNEL_COMMAND);
+			// break;
+		// case SIGFOX_RESET_CHANNEL_CMD:
+			// sprintf((char*)send, SIGFOX_RESET_CHANNEL_COMMAND);
+			// break;
+		// case SIGFOX_FREQUENCY_CMD:
+			// sprintf((char*)send, SIGFOX_FREQUENCY_COMMAND);
+			// break;
+		case SIGFOX_SET_POWERLEVEL_CMD:
+			sprintf((char*)send,"%s %d\r\n",SIGFOX_REDUCE_POWERLEVEL_COMMAND,m_powerlevel);
+			break;
+		// case SIGFOX_SAVE_CONFIG_CMD:
+			// sprintf((char*)send, SIGFOX_SAVE_CONFIG_COMMAND);
+			// break;
+		case SIGFOX_STOP_MESSAGE_CMD : 
+			sprintf((char*)send,"%s\r\n",SIGFOX_STOP_MESSAGE_COMMAND) ;
+			cPrintLog(CDBG_SIGFOX_INFO, "sigfox send request %s", send);
+			break;
+		// case SIGFOX_RX_FREQUENCY_CMD:
+			// sprintf((char*)send, SIGFOX_RX_FREQUENCY_COMMAND);
+			// break;
         case SIGFOX_SET_ENCRIPTION_CMD:
-            sprintf((char*)send,"%s 1\r\n",SIGFOX_SET_PAYLOAD_ENCRIPTION_COMMAND);
+			sprintf((char*)send,"%s 1\r\n",SIGFOX_SET_PAYLOAD_ENCRIPTION_COMMAND);
             break;
         case SIGFOX_SET_PA_CMD:
-            sprintf((char*)send,"%s 1\r\n",SIGFOX_SET_PA_COMMAND);
+			sprintf((char*)send,"%s 1\r\n",SIGFOX_SET_PA_COMMAND);
             break;
         case SIGFOX_SET_RSSI_CMD:
-            sprintf((char*)send,"%s\r\n",SIGFOX_SET_RSSI_COMMAND);
+        	sprintf((char*)send,"%s\r\n",SIGFOX_SET_RSSI_COMMAND);
             break;
         case SIGFOX_SET_LBT_CMD:
-            sprintf((char*)send,"%s\r\n",SIGFOX_SET_LBT_COMMAND);
+        	sprintf((char*)send,"%s\r\n",SIGFOX_SET_LBT_COMMAND);
             break;
         // case SIGFOX_POWERMODE_CMD : 
         default:
@@ -495,33 +503,36 @@ void sigfox_Send_Command(void)
 
 bool cfg_sigfox_check_channel(uint8_t * received_data)
 {
-    uint8_t temp[3];
+	uint8_t temp[3];
     int rsize, tsize, rvalue;
-
-    memset(temp,0x00,sizeof(temp));
-
-    cPrintLog(CDBG_SIGFOX_INFO, "channel: %s\n",received_data);
-    for(tsize = 0,rsize = 0; rsize < downlink_data_size;rsize++)
-    {
-        if(downlink_data[rsize]!=',')
-        {
-            temp[tsize++]=downlink_data[rsize];
-        }
-        else
-        {
-            rvalue= atoi((char*)temp);
-            if(rvalue==0)
-                return true;
-            memset(temp,0x00,sizeof(temp));
-            tsize = 0;
-        }
-    }
-    rvalue= atoi((char*)temp);
-
-    if(rvalue<3)
-        return true;
-
-    return false;
+	
+	memset(temp,0x00,sizeof(temp));
+		
+	cPrintLog(CDBG_SIGFOX_INFO, "channel: %s\n",received_data);	
+	for(tsize = 0,rsize = 0; rsize < downlink_data_size;rsize++)
+	{
+		if(downlink_data[rsize]!=',')
+		{	
+			temp[tsize++]=downlink_data[rsize];
+			
+		}
+		else
+		{
+			rvalue= atoi((char*)temp);
+			
+			if(rvalue==0)
+				return true;
+			memset(temp,0x00,sizeof(temp));
+			tsize = 0;
+		}
+		
+	}
+	rvalue= atoi((char*)temp);
+			
+	if(rvalue<3)
+		return true;
+					
+	return false;
 }
 void sigfox_get_ap_key(uint8_t * received_data)
 {
@@ -535,13 +546,13 @@ void sigfox_get_ap_key(uint8_t * received_data)
         } 
     }
     /*
-    for(s_len = 0, k_len=0; s_len < downlink_data_size;s_len++)
-    {
-        if(downlink_data[s_len]!=' ')
-        {
-            temp[k_len++]=downlink_data[s_len];
-        }
-    }
+	for(s_len = 0, k_len=0; s_len < downlink_data_size;s_len++)
+	{
+		if(downlink_data[s_len]!=' ')
+		{	
+			temp[k_len++]=downlink_data[s_len];
+		}
+	}
     */
     sigfox_hexdigit_to_hexnum(received_data, temp, k_len);
 }
@@ -550,25 +561,13 @@ void sigfox_received_data(uint8_t * received_data, uint8_t length)
 {
     bool sfx_error_check=false;
     bool sfx_return_check=false;
+    bool sfx_rssi_check=false;
     const char sfx_err_str[] = "sfx_error:";
     const uint8_t sfx_err_str_len = 10;
+    const char sfx_rssi_str[] ="return rssi ";
+    const uint8_t sfx_rssi_str_len = 12;
 
-    if(CDBG_mask_val_get() & CDBG_SIGFOX_DBG)
-    {
-        char recv_log_data[256];
-        int idx;
-        if((length+1)>=(sizeof(recv_log_data)-1))
-        {
-            idx = (sizeof(recv_log_data)-1);
-        }
-        else
-        {
-            idx = (length+1);
-        }
-        memcpy(recv_log_data, received_data, idx);
-        recv_log_data[idx] = 0;
-        cPrintLog(CDBG_SIGFOX_DBG,"** Recv Resp : %s\n", recv_log_data);
-    }
+    // cPrintLog(CDBG_SIGFOX_DBG, "%s %d Uart Data Recv! length:%d\n", __func__, __LINE__, length);
     if(0){}  //dummy if
 #ifdef FEATURE_CFG_BYPASS_CONTROL
     else if(m_sigfox_state == BYPASS_WORK)
@@ -645,94 +644,84 @@ void sigfox_received_data(uint8_t * received_data, uint8_t length)
                 break;
             case SIGFOX_SCAN_RC_CMD:
                 {
-#if 0       // Detected RC check 
-                    char str[] = "Detected RC";
-                    downlink_str_len = 1;
-                    search_str_len = strlen(str);
-                    memcpy(search_str, (uint8_t *)str, search_str_len);
-#else
                     char str[] = "rc_bit_mask ";
                     downlink_str_len = 2;
                     sfx_return_check = true;
                     sfx_error_check = true;
                     search_str_len = strlen(str);
                     memcpy(search_str, (uint8_t *)str, search_str_len);
-#endif
+                    sfx_rssi_check = true;
                 }
                 break;
         }
 
-        // cPrintLog(CDBG_SIGFOX_DBG,"** received_data:%s\n",received_data);
-
-
 #if 0
-        if(sfx_error_check){
-            if (search_str_pos && !received_ok){
-                uint8_t *search_str_end_pos;
-                uint8_t i;
-
-                search_str_end_pos = (uint8_t *)strchr((const char *)search_str_pos, (int)0x7d);     // } search
-
-                // sigfox_hexdigit_to_hexnum(search_str_end_pos,search_str_pos,search_str_end_pos-search_str_pos);
-                cPrintLog(CDBG_SIGFOX_DBG,"** search_data %s %d\n",search_str_pos,(search_str_end_pos-(search_str_pos+search_str_len)));
-
-                for(i=0;i<(search_str_end_pos-(search_str_pos+search_str_len));i++){
-                    if(search_str_pos[i+search_str_len] != '0'){
-                        received_fail = true;
-                        break;
-                    }
-                }
-                if(received_fail){
-                    cPrintLog(CDBG_SIGFOX_INFO, "stx_error False %s\n",search_str_pos);
-                }
-                else{
-                    received_ok = true;
-                    cPrintLog(CDBG_SIGFOX_INFO, "str_error OK %s\n",search_str_pos);
-                }
-            }
-        }
-        else
+        if ((m_sigfox_state == SCAN_RC_R) || (m_sigfox_state == SCAN_RC_R2))
         {
-            if (search_str_pos && !received_ok)
-            {
-                received_ok = 1;
-                if (downlink_str_len)
-                {
-                    memset(downlink_data, 0x00, sizeof(downlink_data));
-                    memcpy(downlink_data, search_str_pos + search_str_len, downlink_str_len);
-                    cPrintLog(CDBG_SIGFOX_DBG, "** downlink_data:%s\n", downlink_data);
-                }
-                else
-                {
-                    cPrintLog(CDBG_SIGFOX_DBG, "** str_error OK\n");
-                }
-                downlink_data_size = downlink_str_len;
-            }
+                    sfx_rssi_check = true;
         }
-#else
+#endif
+
+        cPrintLog(CDBG_SIGFOX_DBG,"** received_data:%s\n",received_data);
+
         if(sfx_error_check){
             search_str_pos = (uint8_t *)strstr((const char *)received_data, (const char *)sfx_err_str);
 
             if (search_str_pos && !received_ok && !received_fail){
                 // uint8_t *search_str_end_pos;
-                uint8_t i,len;
 
-                len = strlen((const char *)search_str_pos+sfx_err_str_len);
-                for(i=0;i<len;i++){
-                    if(!isxdigit(search_str_pos[i+sfx_err_str_len])){
-                        cPrintLog(CDBG_SIGFOX_DBG, "str_error OK %s\n",search_str_pos);
-                        received_ok = true;
-                        break;
-                    }
-                    else if(search_str_pos[i+sfx_err_str_len] != '0'){
-                        cPrintLog(CDBG_SIGFOX_ERR, "stx_error False %s\n",search_str_pos);
-                        received_fail = true;
-                        break;
-                    }
+                uint32_t err;
+                uint8_t *tmp;
+                err = strtoul((const char *)&search_str_pos[sfx_err_str_len],(char **)&tmp,16);
+                cPrintLog(CDBG_SIGFOX_DBG,"** strtoul %X\n",err);
+                if(err ==0){
+                    cPrintLog(CDBG_SIGFOX_DBG, "str_error OK %s\n",search_str_pos);
+                    received_ok = true;
+                    lbt_error = false;
+                }
+                else if(err == 0x7E){
+                    cPrintLog(CDBG_SIGFOX_INFO, "LBT error %s\n",search_str_pos);
+                    received_ok = true;
+                    lbt_error = true;
+                }
+                else{
+                    cPrintLog(CDBG_SIGFOX_DBG, "str_error %s\n",search_str_pos);
+                    received_fail = true;
+                    lbt_error = false;
                 }
             }
         }
-        if(sfx_return_check && !data_received){
+        if(sfx_rssi_check && !rssi_ok){
+            search_str_pos = (uint8_t *)strstr((const char *)received_data, (const char *)sfx_rssi_str);
+
+            if(!strcmp((const char *)"return rssi 0",(const char *)search_str_pos)){
+                received_ok = false;
+                received_fail = false;
+                // data_received = false;
+                rssi_ok = false;
+                rssi_data = 0;
+				m_sigfox_cmd = SIGFOX_SCAN_RC_CMD;
+                sigfox_Send_Command();
+                m_sigfox_state = SCAN_RC_R;
+                cPrintLog(CDBG_SIGFOX_DBG,"** retry rc scan\n");
+            }
+            else if (search_str_pos){
+                rssi_ok = true;
+                memset(rssi_downlink_data, 0x00, sizeof(rssi_downlink_data));
+                memcpy(rssi_downlink_data, search_str_pos + sfx_rssi_str_len, 4);
+                cPrintLog(CDBG_SIGFOX_DBG, "** rssi data:%s\n", rssi_downlink_data);
+
+#if 0
+                if(atoi((const char *)rssi_downlink_data) == 0){
+                    data_received = false;
+                    rssi_ok = false;
+
+                }
+#endif
+            }
+        }
+        // if(sfx_return_check && !data_received){
+        if(sfx_return_check){
             search_str_pos = (uint8_t *)strstr((const char *)received_data, (const char *)search_str);
 
             if (search_str_pos)
@@ -752,7 +741,6 @@ void sigfox_received_data(uint8_t * received_data, uint8_t length)
                 downlink_data_size = downlink_str_len;
             }
         }
-#endif
     }
 }
 
@@ -840,7 +828,7 @@ static void cfg_sigfox_uart_uninit(void)
 
 static void sigfox_state_handler(void * p_context)
 {
-    static uint32_t timeout;
+	static uint32_t timeout;
     static sigfox_state_s sfx_send_type;
 
     switch(m_sigfox_state)
@@ -857,19 +845,19 @@ static void sigfox_state_handler(void * p_context)
                 else if(sigfox_power_on_step_settup_s == 1)
                 {
                     cfg_board_common_power_control(module_comm_pwr_sigfox, true);
-                    nrf_delay_ms(4);
+                    nrf_delay_ms(2);
                     nrf_gpio_cfg_output(PIN_DEF_SIGFOX_PWR_EN);
                     nrf_gpio_pin_write(PIN_DEF_SIGFOX_PWR_EN, 1);
+                    nrf_delay_ms(5);  //spec is 4ms
 //                    nrf_gpio_cfg_output(PIN_DEF_SIGFOX_RESET);
 //                    nrf_gpio_pin_write(PIN_DEF_SIGFOX_RESET, 0);
                     nrf_gpio_cfg_input(PIN_DEF_SIGFOX_RESET, NRF_GPIO_PIN_PULLDOWN);
-//                    nrf_delay_ms(1);  //spec is 30us
                     sigfox_power_on_step_settup_s++;
                 }
                 else if(sigfox_power_on_step_settup_s == 2)
                 {
-//                    nrf_gpio_pin_write(PIN_DEF_SIGFOX_RESET, 1);  //spec is 1.82 ms
-                    nrf_gpio_cfg_input(PIN_DEF_SIGFOX_RESET, NRF_GPIO_PIN_PULLUP);
+//                    nrf_gpio_pin_write(PIN_DEF_SIGFOX_RESET, 1);
+                    nrf_gpio_cfg_default(PIN_DEF_SIGFOX_RESET);  //reset pin control with open_drain
                     sigfox_power_on_step_settup_s++;
                 }
                 else if(sigfox_power_on_step_settup_s >= 3 && sigfox_power_on_step_settup_s <= (3+(SIGFOX_DELAY_FOR_UART_INIT/SIGFOX_STATE_MACHINE_TICK_MS)))
@@ -939,15 +927,15 @@ static void sigfox_state_handler(void * p_context)
                 m_sigfox_state = SET_STD_CFG_S;
             }
             else if(received_fail){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s OPEN Error!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s OPEN Error!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
             else if( !(--timeout)){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s OPEN Timeout!\n", __func__);
-                m_sigfox_state_init_flag = true;
+				cPrintLog(CDBG_SIGFOX_ERR, "%s OPEN Timeout!\n", __func__);
+				m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
-            }
+			}
             break;
         case SET_STD_CFG_S:
             cPrintLog(CDBG_SIGFOX_DBG,"** SET_STD_CFG_S\n");
@@ -976,13 +964,13 @@ static void sigfox_state_handler(void * p_context)
                 m_sigfox_state = SW_PUBLIC_S;
             }
             else if(received_fail){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SET_STD_CFG_R Fail!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SET_STD_CFG_R Fail!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
             else if (!(--timeout))
             {
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SET_STD_CFG_R Timeout!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SET_STD_CFG_R Timeout!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
@@ -1009,13 +997,13 @@ static void sigfox_state_handler(void * p_context)
                 m_sigfox_state = SET_PAY_ENC_S;
             }
             else if(received_fail){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SW_PUBLIC_R Fail!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SW_PUBLIC_R Fail!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
             else if (!(--timeout))
             {
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SW_PUBLIC_R Timeout!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SW_PUBLIC_R Timeout!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
@@ -1041,12 +1029,12 @@ static void sigfox_state_handler(void * p_context)
                 m_sigfox_state = SW_PA_S;
             }
             else if(received_fail){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SET_PAY_ENC_R Fail!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SET_PAY_ENC_R Fail!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
             else if (!(--timeout)){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SET_PAY_ENC_R Timeout!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SET_PAY_ENC_R Timeout!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
@@ -1075,30 +1063,30 @@ static void sigfox_state_handler(void * p_context)
                 m_sigfox_state = SET_POWERLEVEL_S;
             }
             else if(received_fail){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SW_PA_R Fail!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SW_PA_R Fail!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
             else if (!(--timeout)){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SW_PA_R Timeout!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SW_PA_R Timeout!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
             break;
         case TRANSMIT_FRAME_S:
-            cPrintLog(CDBG_SIGFOX_INFO,"SendFrame Only\n");
             cPrintLog(CDBG_SIGFOX_DBG,"** TRANSMIT_FRAME_S\n");
             received_ok = false;
             received_fail = false;
             data_received = false;
-            if(mSTOPmessage&&!mWifimsg_send){
-                m_sigfox_cmd = SIGFOX_STOP_MESSAGE_CMD;
+            lbt_error = false;
+			if(mSTOPmessage&&!mWifimsg_send){
+				m_sigfox_cmd = SIGFOX_STOP_MESSAGE_CMD;
             }
             else{
                 m_sigfox_cmd = SIGFOX_SF_CMD;
             }
             sigfox_Send_Command();
-            timeout = SFX_TRANSMIT_TIMEOUT;
+			timeout = SFX_TRANSMIT_TIMEOUT;   
             m_sigfox_state = TRANSMIT_FRAME_R;
             break;
         case TRANSMIT_FRAME_R:
@@ -1116,24 +1104,24 @@ static void sigfox_state_handler(void * p_context)
                 sigfox_transmit_fail = true;
                 m_sigfox_state = EXIT;
             }
-            else if( !(--timeout))
-            {
+			else if( !(--timeout))
+			{
                 cPrintLog(CDBG_SIGFOX_INFO, "%s TRANSMIT_FRAME_R Timeout!\n", __func__);
-                m_sigfox_state_init_flag = true;
+				m_sigfox_state_init_flag = true;
                 sigfox_transmit_fail = true;
-                m_sigfox_state = EXIT;
-            }
+				m_sigfox_state = EXIT;
+			}
             break;
         case TRANSMIT_FRAME_DOWNLINK_S:
-            cPrintLog(CDBG_SIGFOX_INFO,"SendFrame And Wiat DL\n");
             cPrintLog(CDBG_SIGFOX_DBG,"** TRANSMIT_FRAME_DOWNLINK_S\n");
             received_ok = false;
             received_fail = false;
             data_received = false;
+            lbt_error = false;
             m_sigfox_cmd = SIGFOX_SF_R_CMD;
             sigfox_Send_Command();
-            cPrintLog(CDBG_SIGFOX_INFO, "%s TRANSMIT AND WAIT!\n", __func__);
-            timeout = SFX_TRANSMIT_DN_TIMEOUT;
+			cPrintLog(CDBG_SIGFOX_INFO, "%s TRANSMIT AND WAIT!\n", __func__);
+			timeout = SFX_TRANSMIT_DN_TIMEOUT;
             m_sigfox_state = TRANSMIT_FRAME_DOWNLINK_R;
             break;
         case TRANSMIT_FRAME_DOWNLINK_R:
@@ -1142,33 +1130,34 @@ static void sigfox_state_handler(void * p_context)
                 cPrintLog(CDBG_SIGFOX_INFO, "%s RECEIVE_DOWNLINK_R!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 sigfox_transmit_fail = false;
-                m_sigfox_state = SAVE_DOWNLINK_S;
-                received_ok = 0;
+				m_sigfox_state = SAVE_DOWNLINK_S;
+				received_ok = 0;
                 received_fail = 0;
             }
             else if(received_fail)
             {
-                m_sigfox_state_init_flag = true;
+				m_sigfox_state_init_flag = true;
                 sigfox_transmit_fail = true;
-                m_sigfox_state = EXIT;
-                cPrintLog(CDBG_SIGFOX_INFO, "%s RECEIVE_DOWNLINK_Fail!\n", __func__);
+				m_sigfox_state = EXIT;
+				cPrintLog(CDBG_SIGFOX_INFO, "%s RECEIVE_DOWNLINK_Fail!\n", __func__);
             }
-            else if( !(--timeout))
-            {
-                m_sigfox_state_init_flag = true;
+			else if( !(--timeout))
+			{
+				m_sigfox_state_init_flag = true;
                 sigfox_transmit_fail = true;
-                m_sigfox_state = EXIT;
-                cPrintLog(CDBG_SIGFOX_INFO, "%s RECEIVE_DOWNLINK_TIMEOUT!\n", __func__);
-            }
+				m_sigfox_state = EXIT;
+				cPrintLog(CDBG_SIGFOX_INFO, "%s RECEIVE_DOWNLINK_TIMEOUT!\n", __func__);
+			}
             break;
         case TRANSMIT_BIT_S:
             cPrintLog(CDBG_SIGFOX_DBG,"** TRANSMIT_BIT_S\n");
             received_ok = false;
             received_fail = false;
             data_received = false;
+            lbt_error = false;
             m_sigfox_cmd = SIGFOX_SB_CMD;
             sigfox_Send_Command();
-            timeout = SFX_TRANSMIT_TIMEOUT;
+			timeout = SFX_TRANSMIT_TIMEOUT;
             m_sigfox_state = TRANSMIT_BIT_R;
             break;
         case TRANSMIT_BIT_R:
@@ -1185,23 +1174,24 @@ static void sigfox_state_handler(void * p_context)
                 sigfox_transmit_fail = true;
                 m_sigfox_state = EXIT;
             }
-            else if( !(--timeout))
-            {
+			else if( !(--timeout))
+			{
                 cPrintLog(CDBG_SIGFOX_INFO, "%s TRANSMIT_BIT_R Timeout!\n", __func__);
-                m_sigfox_state_init_flag = true;
+				m_sigfox_state_init_flag = true;
                 sigfox_transmit_fail = true;
-                m_sigfox_state = EXIT;
-            }
+				m_sigfox_state = EXIT;
+			}
             break;
         case TRANSMIT_BIT_DOWNLINK_S:
             cPrintLog(CDBG_SIGFOX_DBG,"** TRANSMIT_BIT_DOWNLINK_S\n");
             received_ok = false;
             received_fail = false;
             data_received = false;
+            lbt_error = false;
             m_sigfox_cmd = SIGFOX_SB_R_CMD;
             sigfox_Send_Command();
-            cPrintLog(CDBG_SIGFOX_INFO, "%s TRANSMIT AND WAIT!\n", __func__);
-            timeout = SFX_TRANSMIT_DN_TIMEOUT;
+			cPrintLog(CDBG_SIGFOX_INFO, "%s TRANSMIT AND WAIT!\n", __func__);
+			timeout = SFX_TRANSMIT_DN_TIMEOUT;
             m_sigfox_state = TRANSMIT_BIT_DOWNLINK_R;
             break;
         case TRANSMIT_BIT_DOWNLINK_R:
@@ -1210,24 +1200,24 @@ static void sigfox_state_handler(void * p_context)
                 cPrintLog(CDBG_SIGFOX_INFO, "%s RECEIVE_DOWNLINK_R!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 sigfox_transmit_fail = false;
-                m_sigfox_state = SAVE_DOWNLINK_S;
-                received_ok = 0;
+				m_sigfox_state = SAVE_DOWNLINK_S;
+				received_ok = 0;
                 received_fail = 0;
             }
             else if(received_fail)
             {
-                m_sigfox_state_init_flag = true;
+				m_sigfox_state_init_flag = true;
                 sigfox_transmit_fail = true;
-                m_sigfox_state = EXIT;
-                cPrintLog(CDBG_SIGFOX_ERR, "%s RECEIVE_DOWNLINK_Fail!\n", __func__);
+				m_sigfox_state = EXIT;
+				cPrintLog(CDBG_SIGFOX_ERR, "%s RECEIVE_DOWNLINK_Fail!\n", __func__);
             }
-            else if( !(--timeout))
-            {
-                m_sigfox_state_init_flag = true;
+			else if( !(--timeout))
+			{
+				m_sigfox_state_init_flag = true;
                 sigfox_transmit_fail = true;
-                m_sigfox_state = EXIT;
-                cPrintLog(CDBG_SIGFOX_ERR, "%s RECEIVE_DOWNLINK_TIMEOUT!\n", __func__);
-            }
+				m_sigfox_state = EXIT;
+				cPrintLog(CDBG_SIGFOX_ERR, "%s RECEIVE_DOWNLINK_TIMEOUT!\n", __func__);
+			}
             break;
         case BYPASS_INIT:
 #ifdef FEATURE_CFG_BYPASS_CONTROL
@@ -1283,24 +1273,24 @@ static void sigfox_state_handler(void * p_context)
             data_received = false;
             m_sigfox_cmd = SIGFOX_GET_ID_CMD;
             sigfox_Send_Command();
-            timeout = SFX_SETUP_TIMEOUT;
+			timeout = SFX_SETUP_TIMEOUT;
             m_sigfox_state = GET_ID_R;
             break;
         case GET_ID_R:
             if(data_received)
             {
                 m_sigfox_state_init_flag = true;
-                sigfox_hexdigit_to_hexnum(m_module_peripheral_ID.sigfox_device_ID,downlink_data,8);
+				sigfox_hexdigit_to_hexnum(m_module_peripheral_ID.sigfox_device_ID,downlink_data,8);
                 m_sigfox_state = GET_PACCODE_S;
-                received_ok = 0;
+				received_ok = 0;
                 received_fail = 0;
             }
-            else if( !(--timeout))
-            {
-                cPrintLog(CDBG_SIGFOX_ERR, "%s GET_ID_R Timeout!\n", __func__);
-                m_sigfox_state_init_flag = true;
-                m_sigfox_state = EXIT;
-            }
+			else if( !(--timeout))
+			{
+				cPrintLog(CDBG_SIGFOX_ERR, "%s GET_ID_R Timeout!\n", __func__);
+				m_sigfox_state_init_flag = true;
+				m_sigfox_state = EXIT;
+			}
             break;
         case GET_PACCODE_S:
             cPrintLog(CDBG_SIGFOX_DBG,"** GET_PACCODE_S\n");
@@ -1309,7 +1299,7 @@ static void sigfox_state_handler(void * p_context)
             data_received = false;
             m_sigfox_cmd = SIGFOX_GET_PACCODE_CMD;
             sigfox_Send_Command();
-            timeout = SFX_SETUP_TIMEOUT;
+			timeout = SFX_SETUP_TIMEOUT;
             m_sigfox_state = GET_PACCODE_R;
             break;
         case GET_PACCODE_R:
@@ -1317,18 +1307,18 @@ static void sigfox_state_handler(void * p_context)
             {
                 m_sigfox_state_init_flag = true;
                 cPrintLog(CDBG_SIGFOX_DBG,"** PAC : %s\n",downlink_data);
-                sigfox_hexdigit_to_hexnum(m_module_peripheral_ID.sigfox_pac_code,downlink_data,16);
+				sigfox_hexdigit_to_hexnum(m_module_peripheral_ID.sigfox_pac_code,downlink_data,16);
                 m_sigfox_state = EXIT;
-//                m_sigfox_state = SET_RSSI_S;
-                received_ok = 0;
+                // m_sigfox_state = SET_RSSI_S;
+				received_ok = 0;
                 received_fail = 0;
             }
-            else if( !(--timeout))
-            {
-                cPrintLog(CDBG_SIGFOX_ERR, "%s GET_PACCODE_R Timeout!\n", __func__);
-                m_sigfox_state_init_flag = true;
-                m_sigfox_state = EXIT;
-            }
+			else if( !(--timeout))
+			{
+				cPrintLog(CDBG_SIGFOX_ERR, "%s GET_PACCODE_R Timeout!\n", __func__);
+				m_sigfox_state_init_flag = true;
+				m_sigfox_state = EXIT;
+			}
             break;
         case SET_RSSI_S:
             cPrintLog(CDBG_SIGFOX_DBG,"** SET_RSSI_S\n");
@@ -1347,15 +1337,15 @@ static void sigfox_state_handler(void * p_context)
                 m_sigfox_state = SET_LBT_S;
             }
             else if(received_fail){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SET_RSSI_R Fail!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SET_RSSI_R Fail!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
             else if( !(--timeout)){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SET_RSSI_R Timeout!\n", __func__);
-                m_sigfox_state_init_flag = true;
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SET_RSSI_R Timeout!\n", __func__);
+				m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
-            }
+			}
             break;
         case SET_LBT_S:
             cPrintLog(CDBG_SIGFOX_DBG,"** SET_LBT_S\n");
@@ -1374,15 +1364,15 @@ static void sigfox_state_handler(void * p_context)
                 m_sigfox_state = EXIT;
             }
             else if(received_fail){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SET_LBT_R Fail!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SET_LBT_R Fail!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
             else if( !(--timeout)){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SET_LBT_R Timeout!\n", __func__);
-                m_sigfox_state_init_flag = true;
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SET_LBT_R Timeout!\n", __func__);
+				m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
-            }
+			}
             break;
         case SET_POWERLEVEL_S:
             cPrintLog(CDBG_SIGFOX_DBG,"** SET_POWERLEVEL_S\n");
@@ -1405,39 +1395,41 @@ static void sigfox_state_handler(void * p_context)
                 m_sigfox_state = sfx_send_type;
             }
             else if(received_fail){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SET_POWERLEVEL_R Fail!\n", __func__);
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SET_POWERLEVEL_R Fail!\n", __func__);
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
             else if( !(--timeout)){
-                cPrintLog(CDBG_SIGFOX_ERR, "%s SET_POWERLEVEL_R Timeout!\n", __func__);
-                m_sigfox_state_init_flag = true;
+				cPrintLog(CDBG_SIGFOX_ERR, "%s SET_POWERLEVEL_R Timeout!\n", __func__);
+				m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
-            }
+			}
             break;
         case SAVE_DOWNLINK_S:
             cPrintLog(CDBG_SIGFOX_DBG,"** SAVE_DOWNLINK_S\n");
             sigfox_get_ap_key(downlink_convert);
-            cPrintLog(CDBG_SIGFOX_INFO, "%02X %02X %02X %02X %02X %02X %02X %02X RECEIVED\n", downlink_convert[0], downlink_convert[1], downlink_convert[2], downlink_convert[3], downlink_convert[4], downlink_convert[5], downlink_convert[6], downlink_convert[7]);
-            m_sigfox_state = SAVE_DOWNLINK_R;
+			cPrintLog(CDBG_SIGFOX_INFO, "%02X %02X %02X %02X %02X %02X %02X %02X RECEIVED\n", downlink_convert[0], downlink_convert[1], downlink_convert[2], downlink_convert[3], downlink_convert[4], downlink_convert[5], downlink_convert[6], downlink_convert[7]);
+			m_sigfox_state = SAVE_DOWNLINK_R;
             // sigfox_downlink_success = true;
             break;
         case SAVE_DOWNLINK_R:
-            if((m_module_parameter.downlink_version < downlink_convert[0]) || (downlink_convert[0] == 0xff))
+			if((m_module_parameter.downlink_version < downlink_convert[0]) || (downlink_convert[0] == 0xff))
             {
-                module_parameter_set_val(module_parameter_item_idle_time, (unsigned int)(ONE_DAY_SEC/((unsigned int)downlink_convert[0])));
-                module_parameter_set_val(module_parameter_item_no_motion_duration, (unsigned int)(downlink_convert[1]*60));
+				module_parameter_set_val(module_parameter_item_idle_time, (unsigned int)(ONE_DAY_SEC/((unsigned int)downlink_convert[0])));
+				module_parameter_set_val(module_parameter_item_no_motion_duration, (unsigned int)(downlink_convert[1]*60));
 
-                downlink_max = (ONE_DAY_SEC / m_module_parameter.idle_time)*m_module_parameter.downlink_day;
-                module_parameter_update();
+				downlink_max = (ONE_DAY_SEC / m_module_parameter.idle_time)*m_module_parameter.downlink_day;
+				module_parameter_update();
             }
-            m_sigfox_state = EXIT;
+			m_sigfox_state = EXIT;
             break;
         case SCAN_RC_S:
             cPrintLog(CDBG_SIGFOX_DBG,"** SCAN_RC_S\n");
             received_ok = false;
             received_fail = false;
             data_received = false;
+            rssi_ok = false;
+            rssi_data = 0;
             m_sigfox_abort_flag = false;
             timeout = SFX_RC_SCAN_TIMEOUT;
 
@@ -1445,27 +1437,46 @@ static void sigfox_state_handler(void * p_context)
             sigfox_Send_Command();
             m_sigfox_state = SCAN_RC_R;
             break;
-        case SCAN_RC_R:
-            if(data_received)
+        case SCAN_RC_R2:
+            if(rssi_ok)
             {
-#if 0       // Detected RC check 
-                uint8_t rc_tmp;
+#if 0
+                int8_t cnv_data=0;
 
-                m_sigfox_state_init_flag = true;
-                rc_tmp = hextonum(downlink_data[0]);
-                if(rc_tmp){
-                    m_module_parameter.sigfox_RC_number = rc_tmp;
-                    cPrintLog(CDBG_SIGFOX_INFO,"SIGFOX RC scan data:%d\n",m_module_parameter.sigfox_RC_number);
-                    sigfox_rc_checked  = true;
+                if(rssi_downlink_data[0] == '-'){
+                    cnv_data = atoi((const char *)&rssi_downlink_data[1]);
+                    rssi_data = cnv_data * -1;
                 }
-                else
-                    sigfox_rc_checked  = false;
-
-                m_sigfox_state = EXIT;
+                else{
+                    rssi_data = atoi((const char *)&rssi_downlink_data[0]);
+                }
 #else
+                rssi_data = atoi((const char *)&rssi_downlink_data[0]);
+#endif
+				m_sigfox_state_init_flag = true;
+				m_sigfox_state = EXIT;
+                cPrintLog(CDBG_SIGFOX_DBG,"sfx_scan_rc_rssi : %d\n",rssi_data);
+            }
+            else if(received_fail){
+                cPrintLog(CDBG_SIGFOX_INFO,"SIGFOX RC scan fail\n");
+                sigfox_rc_checked  = false;
+				m_sigfox_state_init_flag = true;
+				m_sigfox_state = EXIT;
+            }
+			else if( !(--timeout))
+			{
+                cPrintLog(CDBG_SIGFOX_INFO,"SIGFOX RC scan timeout\n");
+                sigfox_rc_checked  = false;
+				m_sigfox_state_init_flag = true;
+				m_sigfox_state = EXIT;
+			}
+            break;
+        case SCAN_RC_R:
+            if(data_received & rssi_ok)
+            {
 // TODO RC check
                 uint8_t rc_tmp,cnv_data;
-
+#if 0
                 if(isxdigit(downlink_data[1])){
                     // cnv_data = hextonum(downlink_data[0]) * 0x10 + hextonum(downlink_data[1]);
                     cnv_data = hextonum(downlink_data[0])*0x10;
@@ -1473,6 +1484,15 @@ static void sigfox_state_handler(void * p_context)
                 else{
                     cnv_data = hextonum(downlink_data[0]);
                 }
+#else
+                if(isdigit(downlink_data[1])){
+                    cnv_data = (downlink_data[0] - '0') * 10 + (downlink_data[1] - '0');
+                }
+                else{
+                    // cnv_data = hextonum(downlink_data[0]);
+                    cnv_data = (downlink_data[0] - '0');
+                }
+#endif
                 switch(cnv_data){
                     case 0x1:
                         rc_tmp = 1;
@@ -1498,34 +1518,49 @@ static void sigfox_state_handler(void * p_context)
                 }
                 m_sigfox_state_init_flag = true;
                 if(rc_tmp){
-                    cPrintLog(CDBG_SIGFOX_INFO,"SIGFOX RC scan data:%d\n",rc_tmp);
                     sigfox_rc_checked  = true;
+                    rc_scan_return_chk = true;
+
+                    cPrintLog(CDBG_SIGFOX_INFO,"SIGFOX RC scan data:%d\n",rc_tmp);
                     if(rc_tmp != m_module_parameter.sigfox_RC_number){
                         m_module_parameter.sigfox_RC_number = rc_tmp;
                         module_parameter_update();
                     }
+                    m_sigfox_state = SCAN_RC_R2;
                 }
                 else{
                     cPrintLog(CDBG_SIGFOX_INFO,"SIGFOX RC scan Fail\n");
                     sigfox_rc_checked  = false;
+                    rc_scan_return_chk = true;
+                    m_sigfox_state_init_flag = true;
+                    m_sigfox_state = EXIT;
                 }
 
-                m_sigfox_state = EXIT;
-#endif
             }
             else if(received_fail){
                 cPrintLog(CDBG_SIGFOX_INFO,"SIGFOX RC scan fail\n");
                 sigfox_rc_checked  = false;
-                m_sigfox_state_init_flag = true;
-                m_sigfox_state = EXIT;
+                rc_scan_return_chk = false;
+				m_sigfox_state_init_flag = true;
+				m_sigfox_state = EXIT;
             }
-            else if( !(--timeout))
-            {
-                cPrintLog(CDBG_SIGFOX_INFO,"SIGFOX RC scan timeout\n");
-                sigfox_rc_checked  = false;
-                m_sigfox_state_init_flag = true;
-                m_sigfox_state = EXIT;
-            }
+			else if( !(--timeout))
+			{
+                if(data_received){
+                    cPrintLog(CDBG_SIGFOX_INFO,"SIGFOX RC scan Fail\n");
+                    sigfox_rc_checked  = false;
+                    rc_scan_return_chk = true; 
+                    m_sigfox_state_init_flag = true;
+                    m_sigfox_state = EXIT;
+                }
+                else{
+                    cPrintLog(CDBG_SIGFOX_INFO,"SIGFOX RC scan timeout\n");
+                    sigfox_rc_checked  = false;
+                    rc_scan_return_chk = false;
+                    m_sigfox_state_init_flag = true;
+                    m_sigfox_state = EXIT;
+                }
+			}
             break;
         case EXIT:
             cPrintLog(CDBG_SIGFOX_DBG,"** EXIT\n");
@@ -1537,8 +1572,8 @@ static void sigfox_state_handler(void * p_context)
                 m_sigfox_state_init_flag = false;
             }
             received_fail  = false;
-            m_set_parameter = false;
-            m_get_parameter = false;
+			m_set_parameter = false;
+			m_get_parameter = false;
             break;
         default:
             break;

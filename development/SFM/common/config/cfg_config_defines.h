@@ -69,6 +69,8 @@ supported funcion feature
 #define FEATURE_CFG_USES_ADC_READ_BATTERY_LEVEL  //adc for battery read
 #define FEATURE_CFG_BLE_UART_CONTROL
 #define FEATURE_CFG_ACC_REPORT  //depend on FEATURE_CFG_BLE_UART
+#define FEATURE_CFG_USE_I2C0_DBG_PIN
+#define FEATURE_CFG_FULL_TEST_CMD_WITH_BLE_NUS
 
 /******************************************************
 WORKAROUND feature
@@ -124,5 +126,7 @@ test feature
 
 #include "cfg_config_module.h"
 #include "cfg_config_board.h"
+#if defined(FEATURE_WISOL_DEVICE ) && defined(FEATURE_WISOL_APP)
 #include "cfg_config_redefine.h"
+#endif
 #endif // __CFG_CONFIG_DEFINEDS_H__

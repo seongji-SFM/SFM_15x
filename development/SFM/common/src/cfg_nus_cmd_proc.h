@@ -11,6 +11,7 @@
 #define __CFG_NUS_CMD_PROC_H__
 
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef struct
 {
@@ -50,6 +51,7 @@ extern "C" {
 extern bool m_nus_send_enable;
 extern bool m_nus_service_flag;
 extern nus_service_parameter_t m_nus_service_parameter;
+extern const uint8_t m_nus_master_unlock_code[8];
 
 void nus_module_parameter_get(void);
 void nus_data_init(void);

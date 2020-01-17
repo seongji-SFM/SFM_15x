@@ -40,6 +40,8 @@
 #include "cfg_config.h"
 #include "cfg_dbg_log.h"
 #include "cfg_ble_ctrl.h"
+#include "cfg_scenario.h"
+#include "cfg_nus_cmd_proc.h"
 
 // ble common
 cBle_ctrl_on_ble_evt_handler_func m_ble_evt_cb =NULL;
@@ -58,6 +60,9 @@ BLE_ADVERTISING_DEF(m_advertising);                                             
 cBle_ctrl_on_adv_evt_handler_func m_ble_on_adv_evt_cb = NULL;
 bool m_ble_advertising_req_state = false;
 bool m_ble_advertising_state = false;
+
+uint32_t m_ble_adv_interval;
+uint32_t m_ble_adv_timeout;
 
 //ble gap_params
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(50, UNIT_1_25_MS)            /**< Minimum acceptable connection interval (0.1 seconds). */
@@ -163,6 +168,20 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             cPrintLog(CDBG_BLE_INFO, "BLE_GAP_EVT_DISCONNECTED!\n");
             m_conn_handle = BLE_CONN_HANDLE_INVALID;
             ble_connect_on = false;
+            if(nus_disconnect_reset)
+            {
+                nus_disconnect_reset = false;
+                m_module_waitMS_N_reset_req = 1000;
+            }
+            if(nus_disconnect_powerdown)
+            {
+                nus_disconnect_powerdown = false;
+                cfg_scen_powerdown_request(1000, false);
+            }
+            if(m_nus_service_flag)
+            {
+                m_nus_service_flag = false;
+            }
             if(m_ble_evt_cb)m_ble_evt_cb(cBle_GAP_DISCONNECTED, NULL);
             break;
 
@@ -311,6 +330,9 @@ void cfg_ble_advertising_init(uint32_t interval_625_MS_units, uint32_t timeout_s
     APP_ERROR_CHECK(err_code);
 
     ble_advertising_conn_cfg_tag_set(&m_advertising, APP_BLE_CONN_CFG_TAG);
+
+    m_ble_adv_interval = interval_625_MS_units;
+    m_ble_adv_timeout = timeout_sec;
     m_ble_on_adv_evt_cb = adv_evt_cb;
 }
 

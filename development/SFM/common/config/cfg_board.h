@@ -22,8 +22,7 @@
 #include "nrf_drv_spi.h"
 #include "cfg_twis_board_control.h"
 #include "cfg_bma250_module.h"
-#include "cfg_tmp102_module.h"
-#include "cfg_opt3001_module.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -66,10 +65,20 @@ extern "C" {
 #define SIGFOX_RC_NUMBER_MIN                1
 #define SIGFOX_RC_NUMBER_MAX                7
 #define SIGFOX_RC_NUMBER_DEFAULT            1  //RC1
-#if !((SIGFOX_RC_NUMBER_MIN <= SIGFOX_RC_NUMBER_DEFAULT) && (SIGFOX_RC_NUMBER_MAX >= SIGFOX_RC_NUMBER_DEFAULT))
-#error "SIGFOX_RC_NUMBER_DEFAULT Error"
+
+
+typedef enum
+{
+    RC_SCAN_DISABLE,
+    RC_SCAN_ALWAYS,
+    RC_SCAN_ONLY_SEND_WHEN_CONFIRMED,
+    RC_SCAN_TYPE_MAX
+}rc_scan_type_e;
+
+#define SIGFOX_SCAN_RC_MODE_DEFAULT     RC_SCAN_DISABLE
+
 #endif
-#endif
+
 /* ambient light - full-scale range(lux)
 0:40.95   1:81.90   2:163.80   3:327.60    4:655.20    5:1310.40 
 6:2620.80 7:5241.60 8:10483.20 9:20966.40 10:41932.80 11:83865.60 */
@@ -86,7 +95,17 @@ extern "C" {
 #define MAIN_MAGNETIC_GPIO_ENABLE_DEFAULT true  //use to power off lock
 #define MAIN_SIGFOX_SNEK_TESTMODE_ENABLE_DEFAULT false
 
+//#define BOARD_FEATURE_USE_WIFI_BLE_RF_SWITCH_GPIOS PIN_DEF_AIN1
+
 //modify define
+#include "cfg_board_redefine.h"
+
+#ifdef SIGFOX_RC_NUMBER_DEFAULT
+#if !((SIGFOX_RC_NUMBER_MIN <= SIGFOX_RC_NUMBER_DEFAULT) && (SIGFOX_RC_NUMBER_MAX >= SIGFOX_RC_NUMBER_DEFAULT))
+#error "SIGFOX_RC_NUMBER_DEFAULT Error"
+#endif
+#endif
+
 typedef enum
 {
     module_comm_pwr_pon_init,
@@ -137,10 +156,6 @@ typedef struct
     int8_t      temperature_sensor_interrupt_low_value;     //module_parameter_item_temperature_sensor_low_value
     uint8_t     gps_operation_mode;                         //module_parameter_item_gps_operation_mode   
 
-#ifdef CDEV_SIGFOX_MONARCH_MODULE
-    uint8_t     sigfox_RC_number;                           //module_parameter_item_sigfox_RC_number /*1=RC1, 2=RC2, 3=RC3c, 4=RC4, 5=RC5, 6=RC6*/
-#endif
-
     /* the registers of accelerometer    */
     uint8_t     ctrl_mode_reg;                      //module_parameter_item_ctrl_mode_reg
     uint8_t     bw_u8;                              //module_parameter_item_bw_u8
@@ -168,6 +183,10 @@ typedef struct
     uint8_t     sigfox_device_ID[4];
     uint8_t     sigfox_pac_code[8];
     uint8_t     board_ID;
+
+    uint8_t     sigfox_RC_number;                           //module_parameter_item_sigfox_RC_number /*1=RC1, 2=RC2, 3=RC3c, 4=RC4, 5=RC5, 6=RC6*/  //CDEV_SIGFOX_MONARCH_MODULE
+    uint8_t     sigfox_scan_rc_mode;                        //module_parameter_item_sigfox_scan_rc_mode  //CDEV_SIGFOX_MONARCH_MODULE
+
     int32_t     guard_area_align4_2;
     uint32_t    crc32;
 }module_parameter_t;
@@ -264,6 +283,8 @@ typedef enum
 }main_send_data_type;
 
 typedef void (*cfg_board_shutdown_peripherals_func)(void);
+typedef void (*cfg_board_i2c_dev_deepsleep_CB)(void);
+typedef void (*cfg_board_io_reconfig_deepsleep_CB)(void);
 
 extern const nrf_drv_spi_config_t m_spi_config_default;
 extern module_parameter_t m_module_parameter;
@@ -271,6 +292,7 @@ extern bool m_module_parameter_update_req;
 extern bool m_module_parameter_write_N_reset_flag;
 extern bool m_module_parameter_save_N_reset_req;
 extern int m_module_waitMS_N_reset_req;
+extern uint8_t  magnet_status;
 
 extern registered_mac_t m_registered_mac_info;
 extern ssid_list_t m_ssid_list_info;
@@ -291,6 +313,10 @@ extern bool m_cfg_i2c_master_init_flag;
 extern module_peripheral_data_t m_module_tracking_data;
 extern module_peripheral_ID_t m_module_peripheral_ID;
 extern cfg_board_shutdown_peripherals_func m_cfg_shutdown_peripherals_func;
+extern cfg_board_i2c_dev_deepsleep_CB m_cfg_board_shutdown_i2c_dev_func;
+extern cfg_board_io_reconfig_deepsleep_CB m_cfg_board_shutdown_io_reconf_func;
+
+typedef void (*cfg_board_io_reconfig_deepsleep_CB)(void);
 
 #define SIGFOX_MSG_SEND_REASON(enum_val) (enum_val)
 
@@ -365,6 +391,7 @@ void cfg_board_init(void);
 void cfg_board_common_power_control(module_comm_pwr_resource_e resource, bool bOn);
 void cfg_board_power_manage(void);
 void cfg_board_indicate_power_down(void);
+void cfg_board_shutdown_gps(void);
 void cfg_board_prepare_power_down(void);
 void cfg_board_goto_power_down(void);
 void cfg_board_pwr_mgmt_init(void);
@@ -378,6 +405,16 @@ void cfg_board_reset(void);
 void cfg_board_check_reset_reason(void);
 void cfg_board_gpio_set_default(void);
 void cfg_board_gpio_set_default_gps(void);
+
+#ifdef BOARD_FEATURE_USE_WIFI_BLE_RF_SWITCH_GPIOS
+void cfg_board_wifi_rf_enable(bool enable);
+#endif
+
+#ifdef FEATURE_CFG_USE_I2CM_2nd
+void cfg_i2c_master_init_2nd(void);
+void cfg_i2c_master_uninit_2nd(void);
+uint32_t cfg_i2c_master_send_General_Call_Reset_2nd(void);
+#endif
 
 #ifdef __cplusplus
 }

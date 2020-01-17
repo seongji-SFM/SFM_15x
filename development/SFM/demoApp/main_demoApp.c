@@ -99,7 +99,6 @@
 #include "cfg_adc_battery_check.h"
 #include "cfg_nRF52_peripherals.h"
 #include "cfg_nus_cmd_proc.h"
-#include "cfg_scenario.h"
 
 extern int16_t tmp102a, tmp102b;
 extern uint16_t tmp108_data;
@@ -125,26 +124,17 @@ bool mWifimsg_send = 0;
 
 extern uint8_t frame_data[(SIGFOX_SEND_PAYLOAD_SIZE*2)+1];  //for hexadecimal
 
-module_mode_t m_module_mode = NONE;
 module_mode_t m_module_mode_old = NONE;
 module_mode_t m_sigfox_next_state = NONE;
 bool m_module_state_started = false;
 
 bool m_init_excute;
-bool m_module_parameter_save_N_reset_req;
-int m_module_waitMS_N_reset_req = 0;
 int m_module_ready_wait_timeout_tick = 0;
-
-volatile bool main_wkup_key_detected;
-volatile bool main_button_detected;
-volatile bool main_magnet_detected;
-volatile bool main_EXTSEN_ISR_detected;
 
 volatile bool main_gps_emer_msg_flag = false;
 int main_GPS_BKUP_time_out = 0;  //GPS_BKUP_CTRL
 
 extern uint8_t  magnet_status;
-uint32_t main_Sec_tick = 0;
 volatile uint32_t motion_sec_tic = 0;
 volatile uint32_t no_motion_sec_tic = 0;
 volatile uint32_t wait_time_sec_tic = 0;
@@ -153,7 +143,6 @@ volatile bool m_wait_retry_event = false;
 volatile bool m_wait_retry_sending = false;
 volatile uint32_t test_time_sec = 0;
 module_peripheral_data_t m_module_tracking_data;
-module_peripheral_ID_t m_module_peripheral_ID;
 
 extern bool m_acc_report_to_nus;
 extern struct bma_accel_data m_accel;
@@ -241,23 +230,9 @@ static void on_cBle_evt(cBle_event_e cBle_evt, void *p_param)
         case cBle_GAP_CONNECTED:
             break;
         case cBle_GAP_DISCONNECTED:
-            if(m_nus_service_flag)
+            if(m_acc_report_to_nus)
             {
-                m_nus_service_flag = false;
-                if(m_acc_report_to_nus)
-                {
-                    m_acc_report_to_nus = false;
-                }
-            }
-            if(nus_disconnect_reset)
-            {
-                nus_disconnect_reset = false;
-                m_module_waitMS_N_reset_req = 1000;
-            }
-            if(nus_disconnect_powerdown)
-            {
-                nus_disconnect_powerdown = false;
-                cfg_scen_powerdown_request(1000, true);
+                m_acc_report_to_nus = false;
             }
             break;
         default:
@@ -510,9 +485,18 @@ module_mode_t main_get_module_state_next(bool normal)
             if(normal)  //gps data scaned
             {
                 if(m_module_parameter.operation_mode == 2/*full tracking mode*/ || test_nus_full_tracking_mode)  //It is for engineer mode.
+                {
                     ret = BLE_SCAN;
+                }
                 else
+                {
+#if defined(CDEV_SIGFOX_MONARCH_MODULE)
+                    ret = SIGFOX_CHECK_RUN_SCAN_RC;
+#else
                     ret = SIGFOX;
+#endif
+
+                }
             }
             else
             {
@@ -523,9 +507,17 @@ module_mode_t main_get_module_state_next(bool normal)
             if(normal)  //ble beacon data scaned
             {
                 if(m_module_parameter.operation_mode == 2/*full tracking mode*/ || test_nus_full_tracking_mode)  //It is for engineer mode.
+                {
                     ret = WIFI;
+                }
                 else
+                {
+#if defined(CDEV_SIGFOX_MONARCH_MODULE)
+                    ret = SIGFOX_CHECK_RUN_SCAN_RC;
+#else
                     ret = SIGFOX;
+#endif
+                }
             }
             else
             {
@@ -536,18 +528,57 @@ module_mode_t main_get_module_state_next(bool normal)
             if(normal)  //wifi AP data scaned
             {
                 if(m_module_parameter.operation_mode == 2/*full tracking mode*/ || test_nus_full_tracking_mode)  //It is for engineer mode.
+                {
+#if defined(CDEV_SIGFOX_MONARCH_MODULE)
+                    ret = SIGFOX_CHECK_RUN_SCAN_RC;
+#else
                     ret = SIGFOX;
+#endif
+                }
                 else
+                {
+#if defined(CDEV_SIGFOX_MONARCH_MODULE)
+                    ret = SIGFOX_CHECK_RUN_SCAN_RC;
+#else
                     ret = SIGFOX;
+#endif
+                }
             }
             else
             {
+#if defined(CDEV_SIGFOX_MONARCH_MODULE)
+                ret = SIGFOX_CHECK_RUN_SCAN_RC;
+#else
                 ret = SIGFOX;
+#endif
             }
             break;
         case SIGFOX:
             ret = BLE;
             break;
+#if defined(CDEV_SIGFOX_MONARCH_MODULE)
+        case SIGFOX_CHECK_RUN_SCAN_RC:
+            if(normal)
+            {
+                ret = SIGFOX_SCAN_RC;
+            }
+            else
+            {
+                ret = SIGFOX;  //not send sigfox data
+            }
+            break;
+
+        case SIGFOX_SCAN_RC:
+            if(normal)
+            {
+                ret = SIGFOX;
+            }
+            else
+            {
+                ret = BLE;  //not send sigfox data
+            }
+            break;
+#endif
         case IDLE:
             ret = MAIN_SCENARIO_LOOP;
             break;
@@ -899,6 +930,7 @@ static void main_schedule_timeout_handler_asset_tracker(void * p_context)
         case ACC:
             if(cfg_peripheral_device_enable_status_get(PTYPE_ACC))
             {
+#ifndef CDEV_DISABLE_ACC_MODULE_LIB
                 if(bma250_get_state() == NONE_ACC)
                 {
                     cPrintLog(CDBG_FCTRL_INFO, "ACC Start\n");
@@ -915,6 +947,7 @@ static void main_schedule_timeout_handler_asset_tracker(void * p_context)
                     cfg_bma250_timers_stop();
     //                bma250_set_state(NONE_ACC);
                 }
+#endif
                 main_set_module_state(main_get_module_state_next(true));
             }
             else
@@ -1453,7 +1486,7 @@ static void main_schedule_timeout_handler_asset_tracker(void * p_context)
                         memset(m_nus_service_parameter.wifi_data, 0, sizeof(m_nus_service_parameter.wifi_data));
                         memset(m_nus_service_parameter.wifi_rssi, 0, sizeof(m_nus_service_parameter.wifi_rssi));
 #endif
-#ifdef CDEV_SIGFOX_MONARCH_MODULE
+#if defined(CDEV_SIGFOX_MONARCH_MODULE)
 #if 0  //support zone change
                         {
                             int txIdx = 0;  /*0:FCC, 1:CE, 2: TELEC*/
@@ -1753,6 +1786,62 @@ static void main_schedule_timeout_handler_asset_tracker(void * p_context)
 #endif
 
             break;
+
+#if defined(CDEV_SIGFOX_MONARCH_MODULE)
+        case SIGFOX_CHECK_RUN_SCAN_RC:
+            if(m_module_parameter.sigfox_scan_rc_mode != RC_SCAN_DISABLE)
+            {
+                cPrintLog(CDBG_FCTRL_INFO, "RC SCAN mode : %d\n", m_module_parameter.sigfox_scan_rc_mode);
+                main_set_module_state(main_get_module_state_next(true));
+            }
+            else
+            {
+                cPrintLog(CDBG_FCTRL_INFO, "RC SCAN disabled! Sigfox Send Req! [Zone:%d]\n", m_module_parameter.sigfox_RC_number);
+                main_set_module_state(main_get_module_state_next(false));
+            }
+            break;
+        case SIGFOX_SCAN_RC:
+            if(sigfox_get_state() == SETUP_S)
+            {
+                if(m_init_excute)
+                {
+                    scan_rc_parameter = true;
+                    sigfox_rc_checked  = false;
+                    cTBC_write_state_noti("SigfoxScanRC");
+                    cPrintLog(CDBG_FCTRL_INFO, "SIGFOX_RC_Scan Start\n");
+                    cfg_sigfox_timers_start();
+                    m_init_excute = false;
+                }
+            }
+            else if(sigfox_check_exit_excute())
+            {
+                scan_rc_parameter = false;
+                cfg_sigfox_timers_stop();
+                sigfox_set_state(SETUP_S);
+                if(sigfox_rc_checked)  //rc scaned
+                {
+                    cPrintLog(CDBG_FCTRL_INFO, "SIGFOX_RC_Scan OK! [Zone:%d]\n", m_module_parameter.sigfox_RC_number);
+                    main_set_module_state(main_get_module_state_next(true));
+                }
+                else
+                {
+                    cPrintLog(CDBG_FCTRL_INFO, "SIGFOX_RC_Scan Failed!\n");
+                    if(m_module_parameter.sigfox_scan_rc_mode == RC_SCAN_ALWAYS)
+                    {
+                        main_set_module_state(main_get_module_state_next(true));
+                    }
+                    else if(m_module_parameter.sigfox_scan_rc_mode == RC_SCAN_ONLY_SEND_WHEN_CONFIRMED)
+                    {
+                        main_set_module_state(main_get_module_state_next(false));
+                    }
+                    else
+                    {
+                        main_set_module_state(main_get_module_state_next(false));
+                    }
+                }
+            }
+            break;
+#endif
 
         case IDLE:
             cPrintLog(CDBG_FCTRL_INFO, "Wakeup[%d][%d]\n", main_wakeup_reason,test_time_sec);
@@ -2160,6 +2249,28 @@ void main_basic_resource_init(void)
     cfg_board_pwr_mgmt_init();
 }
 
+void i2c_device_enter_deepsleep(void)
+{
+    nrf_delay_ms(1);
+    cfg_i2c_master_send_General_Call_Reset();
+    nrf_delay_ms(1);
+#ifndef CDEV_DISABLE_ACC_MODULE_LIB
+#ifdef CDEV_ACC_MODULE
+    cfg_bma250_req_suppend_mode();
+    nrf_delay_ms(1);
+#endif
+#endif
+
+#if defined(CDEV_TEMPERATURE_SENSOR_TMP102) || defined(CDEV_TEMPERATURE_SENSOR_TMP108)
+    tmp102_req_shutdown_mode();
+    nrf_delay_ms(1);
+#endif
+
+#ifdef CDEV_AMBIENT_LIGHT_SENSOR
+    opt3001_set_shutdown();
+    nrf_delay_ms(1);
+#endif
+}
 int main(void)
 {
     ret_code_t err_code;
@@ -2168,6 +2279,7 @@ int main(void)
 
     //start of early init ////////
     module_parameter_early_read(); //just read only for module parameter
+    m_cfg_board_shutdown_i2c_dev_func = i2c_device_enter_deepsleep;
     cfg_board_early_init(cfg_board_prepare_power_down);
 
 //test_for_low_current_consumption
@@ -2181,7 +2293,12 @@ int main(void)
 #ifdef FEATURE_CFG_BLE_UART_CONTROL
     nus_data_init();
 #endif
+
+#ifdef FEATURE_CFG_USE_I2C0_DBG_PIN
     cTBC_init(dbg_i2c_user_cmd_proc, true);  //use i2c debug pin
+#else
+    cTBC_init(dbg_i2c_user_cmd_proc, false);  //not use i2c debug pin
+#endif
     cTBC_OVER_RTT_init(tbc_over_rtt_sec_tick_proc); //depend on cTBC_init() //FEATURE_CFG_RTT_MODULE_CONTROL
     cfg_ble_get_ble_mac_address(m_module_peripheral_ID.ble_MAC);
 
@@ -2206,7 +2323,7 @@ int main(void)
     main_ble_init();
     
     cTBC_check_N_enter_bypassmode(200, main_bypass_enter_CB, main_bypass_exit_CB);
-    if(m_hitrun_test_flag)NVIC_SystemReset();
+    if(m_hitrun_test_flag)cfg_board_reset();
 
 //test_for_low_current_consumption
 //    cfg_board_testmode_BLE_Advertising_LowPwr(false, false, main_test_for_peripherals_current_consumption, main_test_for_sleep_tick);
@@ -2224,26 +2341,6 @@ int main(void)
 #ifdef USR_MODULE_FUNCTION_USE_NFC
         cfg_nfc_main_handler();
 #endif
-        if(m_module_parameter_save_N_reset_req)
-        {
-            m_module_parameter_save_N_reset_req = false;
-            module_parameter_update();
-            nrf_delay_ms(1000);
-            NVIC_SystemReset(); 
-        }
-
-        if(m_module_waitMS_N_reset_req > 0)
-        {
-            nrf_delay_ms(m_module_waitMS_N_reset_req);
-            m_module_waitMS_N_reset_req = 0;
-            NVIC_SystemReset(); 
-        }
-
-        if(ble_connect_on)
-            m_nus_send_enable = true;
-        else
-            m_nus_send_enable = false;
-
         cfg_board_power_manage();
     }
 }

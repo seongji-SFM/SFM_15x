@@ -844,7 +844,10 @@ static void sigfox_state_handler(void * p_context)
             {
                 m_sigfox_state_init_flag = true;
                 cPrintLog(CDBG_SIGFOX_INFO, "BAND : %s\n", downlink_data);
-                if ( strncmp((char *)downlink_data, (char*)"FCC",3) == 0 )
+                if ( (strncmp((char *)downlink_data, (char*)"FCC",3) == 0)
+                     || (strncmp((char *)downlink_data, (char*)"RC2",3) == 0)
+                     || (strncmp((char *)downlink_data, (char*)"RC4",3) == 0)
+			        )
                 {
                     is_rcz24 = true;
                 }

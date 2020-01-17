@@ -35,7 +35,6 @@
 #include "cfg_opt3001_module.h" 
 #include "cfg_tmp102_module.h" 
 #include "cfg_scenario.h"
-#include "cfg_scenario.h"
 
 opt3001_attach_callback m_opt3001_attach_CB = NULL;
 

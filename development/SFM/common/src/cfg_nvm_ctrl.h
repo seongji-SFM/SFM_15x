@@ -12,7 +12,8 @@
 #define __CFG_NVM_CTRL_H__
 #include <stdbool.h>
 #include <stdint.h>
-#include "cfg_config_defines.h"
+#include "cfg_config.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

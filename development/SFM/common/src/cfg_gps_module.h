@@ -609,6 +609,9 @@ uint8_t get_hdop_value_check(void);
  * @brief        Sets the hdop value for GPS tracking check(The setting value is 1 to 10, 15, 20).
  */
 void set_hdop_value_check(uint8_t val);
+
+unsigned int cGps_get_cn0_avg(void);
+
 #endif
 
 #ifdef __cplusplus

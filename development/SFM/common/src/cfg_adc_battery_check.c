@@ -33,15 +33,7 @@ uint16_t total_batt_lvl_in_milli_volts;
 static nrf_saadc_input_t m_cfg_adc_batt_input;
 static bool m_cfg_adc_batt_init_flag = false;
 
-#if (((CDEV_MODULE_TYPE == CDEV_MODULE_SFM20R) || (CDEV_MODULE_TYPE == CDEV_MODULE_SFM60R)) && (CDEV_BOARD_TYPE == CDEV_BOARD_EVB))
-#define ADJUST_BATTERY_VALUE    50
-#define ADC_RESULT_IN_MILLI_VOLTS(ADC_VALUE) (((((ADC_VALUE) * ADC_REF_VOLTAGE_IN_MILLIVOLTS) / ADC_RES_10BIT) * ADC_PRE_SCALING_COMPENSATION) * 5/3)
-#elif  (CDEV_BOARD_TYPE == CDEV_BOARD_IHERE) 
-#define ADJUST_BATTERY_VALUE    50
-#define ADC_RESULT_IN_MILLI_VOLTS(ADC_VALUE) (((((ADC_VALUE) * ADC_REF_VOLTAGE_IN_MILLIVOLTS) / ADC_RES_10BIT) * ADC_PRE_SCALING_COMPENSATION) * 5/3)
-#endif
-
-uint16_t batt_lvl_array[][2] = 
+__WEAK uint16_t batt_lvl_array[][2] = 
 {
     {100, 4000},
     {90, 3910},
@@ -55,7 +47,7 @@ uint16_t batt_lvl_array[][2] =
     {10, BATTERY_ADC_WARNING_LVL},
     {5, BATTERY_ADC_CUT_OFF_LVL}
 };
-uint16_t batt_lvl_array_cnt = (sizeof(batt_lvl_array)/4);
+__WEAK uint16_t batt_lvl_array_cnt = (sizeof(batt_lvl_array)/4);
 
 #define ADC_REF_VOLTAGE_IN_MILLIVOLTS     600                                          /**< Reference voltage (in milli volts) used by ADC while doing conversion. */
 #define ADC_PRE_SCALING_COMPENSATION      6                                            /**< The ADC is configured to use VDD with 1/3 prescaling as input. And hence the result of conversion is to be multiplied by 3 to get the actual value of the battery voltage.*/
