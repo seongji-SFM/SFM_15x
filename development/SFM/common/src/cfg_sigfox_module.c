@@ -59,6 +59,7 @@ int m_data_module_type =
 #define SIGFOX_POWERMODE_COMMAND       "AT$P=1\r\n"
 #define SIGFOX_BREAK_COMMAND                   " "
 #define SIGFOX_SNEK_COMMAND                   "ATS410=1\r\n"
+#define SIGFOX_TR_COMMAND              "AT$TR="
 #define SIGFOX_ID_COMMAND              "AT$I=10\r\n" 
 #define SIGFOX_PACCODE_COMMAND         "AT$I=11\r\n"
 #define SIGFOX_CHECK_CHANNEL_COMMAND   "AT$GI?\r\n"
@@ -91,6 +92,7 @@ volatile bool m_get_parameter = false;
 volatile bool m_set_parameter = false;
 bool m_downlink_msg_on = false;
 bool m_snek_testmode_enable = false;
+char m_sfx_force_tx_repeat_count = -1;
 
 bool is_rcz24 = true;
 int m_powerlevel = 0;
@@ -392,6 +394,9 @@ void sigfox_Send_Command(void)
         case SIGFOX_SNEK_CMD:
             sprintf((char*)send, SIGFOX_SNEK_COMMAND);
             break;   
+        case SIGFOX_TR_CMD:
+            sprintf((char*)send, "%s%d\r\n", SIGFOX_TR_COMMAND, m_sfx_force_tx_repeat_count);
+            break;
         case SIGFOX_ID_CMD:
             sprintf((char*)send, SIGFOX_ID_COMMAND);
             break;
@@ -494,6 +499,7 @@ void sigfox_received_data(uint8_t * received_data, uint8_t length)
                 case SIGFOX_SF_CMD : 
                 case SIGFOX_POWERMODE_CMD :
                 case SIGFOX_SNEK_CMD:
+                case SIGFOX_TR_CMD:
                 case SIGFOX_RESET_CHANNEL_CMD:
                 case SIGFOX_SET_POWERLEVEL_CMD:
                 case SIGFOX_SAVE_CONFIG_CMD:
@@ -710,14 +716,7 @@ static void sigfox_state_handler(void * p_context)
                 }
                 else
                 {
-                    if(m_downlink_msg_on)
-                    {
-                        m_sigfox_state = TRANSMIT_FRAME_DOWNLINK_S;
-                    }
-                    else
-                    {
-                        m_sigfox_state = TRANSMIT_FRAME_S;
-                    }
+                    m_sigfox_state = CHECK_N_SET_TX_REPEAT_BEFORE_FRAME_SEND_S;
                 }
             }
             else if( !(--timeout))
@@ -725,8 +724,50 @@ static void sigfox_state_handler(void * p_context)
                 m_sigfox_state_init_flag = true;
                 m_sigfox_state = EXIT;
             }
-
             break;
+
+        case CHECK_N_SET_TX_REPEAT_BEFORE_FRAME_SEND_S:
+            if(m_downlink_msg_on && (0 <= m_sfx_force_tx_repeat_count && 2 >= m_sfx_force_tx_repeat_count))
+            {
+                received_ok = 0;
+                m_sigfox_abort_flag = false;
+                m_sigfox_cmd = SIGFOX_TR_CMD;
+                timeout= CFG_UART_TIMEOUT;
+                sigfox_Send_Command();
+                m_sigfox_state = CHECK_N_SET_TX_REPEAT_BEFORE_FRAME_SEND_R;
+            }
+            else
+            {
+                if(m_downlink_msg_on)
+                {
+                    m_sigfox_state = TRANSMIT_FRAME_DOWNLINK_S;
+                }
+                else
+                {
+                    m_sigfox_state = TRANSMIT_FRAME_S;
+                }
+            }
+            break;
+
+        case CHECK_N_SET_TX_REPEAT_BEFORE_FRAME_SEND_R:
+            if(received_ok)
+            {
+                if(m_downlink_msg_on)
+                {
+                    m_sigfox_state = TRANSMIT_FRAME_DOWNLINK_S;
+                }
+                else
+                {
+                    m_sigfox_state = TRANSMIT_FRAME_S;
+                }
+            }
+            else if( !(--timeout))
+            {
+                m_sigfox_state_init_flag = true;
+                m_sigfox_state = EXIT;
+            }
+            break;
+
         case CHECK_CHANNEL_S:
             received_ok = 0;
             m_sigfox_cmd = SIGFOX_CHECK_CHANNEL_CMD;
@@ -744,14 +785,7 @@ static void sigfox_state_handler(void * p_context)
                 }
                 else
                 {
-                    if(m_downlink_msg_on)
-                    {
-                        m_sigfox_state = TRANSMIT_FRAME_DOWNLINK_S;
-                    }
-                    else
-                    {
-                        m_sigfox_state = TRANSMIT_FRAME_S;
-                    }
+                    m_sigfox_state = CHECK_N_SET_TX_REPEAT_BEFORE_FRAME_SEND_S;
                 }
                 received_ok = 0;
             }
@@ -774,14 +808,7 @@ static void sigfox_state_handler(void * p_context)
             {
                 cPrintLog(CDBG_SIGFOX_INFO, "%s RESET_CHANNEL_R!\n", __func__);
                 nrf_delay_ms(30);
-                if(m_downlink_msg_on)
-                {
-                    m_sigfox_state = TRANSMIT_FRAME_DOWNLINK_S;
-                }
-                else
-                {
-                    m_sigfox_state = TRANSMIT_FRAME_S;
-                }
+                m_sigfox_state = CHECK_N_SET_TX_REPEAT_BEFORE_FRAME_SEND_S;
             }
             else if( !(--timeout))
             {
@@ -1072,6 +1099,16 @@ bool cfg_sigfox_set_senk_testmode_enable(bool enable)
     old_downlink_msg_on = m_snek_testmode_enable;
     m_snek_testmode_enable = enable;
     return old_downlink_msg_on;
+}
+
+void cfg_sigfox_set_force_tx_repeat_count(char value)
+{
+    m_sfx_force_tx_repeat_count = value;
+}
+
+char cfg_sigfox_get_force_tx_repeat_count(void)
+{
+    return m_sfx_force_tx_repeat_count;
 }
 
 void cfg_sigfox_timer_create()

@@ -55,6 +55,7 @@ typedef enum
     SIGFOX_PACCODE_CMD,
     SIGFOX_FREQUENCY_CMD,
     SIGFOX_SNEK_CMD,
+    SIGFOX_TR_CMD,
     SIGFOX_CHECK_CHANNEL_CMD,
     SIGFOX_RESET_CHANNEL_CMD,
     SIGFOX_SET_POWERLEVEL_CMD,
@@ -67,6 +68,8 @@ typedef enum
     SETUP_S,
     INIT_S,
     INIT_R,
+    CHECK_N_SET_TX_REPEAT_BEFORE_FRAME_SEND_S,
+    CHECK_N_SET_TX_REPEAT_BEFORE_FRAME_SEND_R,
     CHECK_CHANNEL_S,
     CHECK_CHANNEL_R,
     RESET_CHANNEL_S,
@@ -210,6 +213,10 @@ bool cfg_sigfox_downlink_on_off(bool on_off);
  *                         
  */
 bool cfg_sigfox_set_senk_testmode_enable(bool enable);
+
+void cfg_sigfox_set_force_tx_repeat_count(char value);
+char cfg_sigfox_get_force_tx_repeat_count(void);
+
 
 /**@brief Function for setting flag to change scenario mode to test mode.
  *

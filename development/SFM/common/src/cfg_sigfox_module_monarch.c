@@ -147,6 +147,7 @@ bool scan_rc_parameter = false;
 
 bool m_downlink_msg_on = false;
 bool m_snek_testmode_enable = false;
+bool m_sfx_force_tx_repeat_count = -1;
 int m_powerlevel = 0;       // 1 : -0.5dB
 bool m_save_result = false;
 
@@ -418,19 +419,31 @@ void sigfox_Send_Command(void)
         }
         break;
         case SIGFOX_SF_CMD : 
-        	sprintf((char*)send,"%s {%s} %d 0\r\n", SIGFOX_SF_COMMAND,frame_data,UPLINK_REPEAT); 
+            if(0 <= m_sfx_force_tx_repeat_count && 2 >= m_sfx_force_tx_repeat_count)
+                sprintf((char*)send,"%s {%s} %d 0\r\n", SIGFOX_SF_COMMAND,frame_data,m_sfx_force_tx_repeat_count); 
+            else
+                sprintf((char*)send,"%s {%s} %d 0\r\n", SIGFOX_SF_COMMAND,frame_data,UPLINK_REPEAT); 
         	cPrintLog(CDBG_SIGFOX_INFO, "sigfox send frame request %s", send);
         	break ;  
-		case SIGFOX_SF_R_CMD :
-        	sprintf((char*)send,"%s {%s} %d 1\r\n", SIGFOX_SF_COMMAND,frame_data,UPLINK_REPEAT); 
+		case SIGFOX_SF_R_CMD : 
+            if(0 <= m_sfx_force_tx_repeat_count && 2 >= m_sfx_force_tx_repeat_count)
+                sprintf((char*)send,"%s {%s} %d 1\r\n", SIGFOX_SF_COMMAND,frame_data,m_sfx_force_tx_repeat_count); 
+            else
+                sprintf((char*)send,"%s {%s} %d 1\r\n", SIGFOX_SF_COMMAND,frame_data,UPLINK_REPEAT); 
         	cPrintLog(CDBG_SIGFOX_INFO, "sigfox send frame request %s", send);		
 			break;
         case SIGFOX_SB_CMD : 
-        	sprintf((char*)send,"%s %s %d 0\r\n", SIGFOX_SB_COMMAND,frame_data,UPLINK_REPEAT); 
+            if(0 <= m_sfx_force_tx_repeat_count && 2 >= m_sfx_force_tx_repeat_count)
+                sprintf((char*)send,"%s %s %d 0\r\n", SIGFOX_SB_COMMAND,frame_data,m_sfx_force_tx_repeat_count); 
+            else
+                sprintf((char*)send,"%s %s %d 0\r\n", SIGFOX_SB_COMMAND,frame_data,UPLINK_REPEAT); 
         	cPrintLog(CDBG_SIGFOX_INFO, "sigfox send bit request %s", send);
         	break ;  
 		case SIGFOX_SB_R_CMD :
-        	sprintf((char*)send,"%s %s %d 1\r\n", SIGFOX_SB_COMMAND,frame_data,UPLINK_REPEAT); 
+            if(0 <= m_sfx_force_tx_repeat_count && 2 >= m_sfx_force_tx_repeat_count)
+                sprintf((char*)send,"%s %s %d 1\r\n", SIGFOX_SB_COMMAND,frame_data,m_sfx_force_tx_repeat_count); 
+            else
+                sprintf((char*)send,"%s %s %d 1\r\n", SIGFOX_SB_COMMAND,frame_data,UPLINK_REPEAT); 
         	cPrintLog(CDBG_SIGFOX_INFO, "sigfox send bit request %s", send);		
 			break;
         // case SIGFOX_OOB_CMD:
@@ -1591,9 +1604,19 @@ bool cfg_sigfox_downlink_on_off(bool on_off)
 bool cfg_sigfox_set_senk_testmode_enable(bool enable)
 {
     bool old_downlink_msg_on;
-    // old_downlink_msg_on = m_snek_testmode_enable;
+    old_downlink_msg_on = m_snek_testmode_enable;
     m_snek_testmode_enable = enable;
     return old_downlink_msg_on;
+}
+
+void cfg_sigfox_set_force_tx_repeat_count(char value)
+{
+    m_sfx_force_tx_repeat_count = value;
+}
+
+char cfg_sigfox_get_force_tx_repeat_count(void)
+{
+    return m_sfx_force_tx_repeat_count;
 }
 
 static void cfg_sigfox_timer_create(void)

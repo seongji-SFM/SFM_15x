@@ -1738,6 +1738,10 @@ static void main_schedule_timeout_handler_asset_tracker(void * p_context)
             {
                 if(m_init_excute)
                 {
+#if 0 // Example_Code for tx_repeat 1
+                    cfg_sigfox_downlink_on_off(true);  //for SFM20,60 (it work just downlink enabled)
+                    cfg_sigfox_set_force_tx_repeat_count(0);  //tx repeat disabled
+#endif
                     cTBC_write_state_noti("Sigfox");
 #if defined(CDEV_SIGFOX_MONARCH_MODULE)
                     cPrintLog(CDBG_FCTRL_INFO, "SIGFOX Start RC:%d DL:%d\n", m_module_parameter.sigfox_RC_number, m_module_parameter.sigfox_recv_en);
@@ -2078,7 +2082,7 @@ static void printout_ID_Info(void)
 {
     cPrintLog(CDBG_FCTRL_INFO, "BLE MAC:");
     cDataDumpPrintOut(CDBG_FCTRL_INFO, m_module_peripheral_ID.ble_MAC, 6);
-#ifdef CDEV_SIGFOX_MODULE
+#if defined(CDEV_SIGFOX_MODULE) || defined(CDEV_SIGFOX_MONARCH_MODULE)
     cPrintLog(CDBG_FCTRL_INFO, "SFX ID:");
     cDataDumpPrintOut(CDBG_FCTRL_INFO, m_module_peripheral_ID.sigfox_device_ID, 4);
     cPrintLog(CDBG_FCTRL_INFO, "SFX PAC CODE:");

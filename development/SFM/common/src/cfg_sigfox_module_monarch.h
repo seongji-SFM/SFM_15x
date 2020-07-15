@@ -232,6 +232,9 @@ bool cfg_sigfox_downlink_on_off(bool on_off);
  */
 bool cfg_sigfox_set_senk_testmode_enable(bool enable);
 
+void cfg_sigfox_set_force_tx_repeat_count(char enable);
+char cfg_sigfox_get_force_tx_repeat_count(void);
+
 /**@brief Function for setting flag to change scenario mode to test mode.
  *
  *                         
