@@ -46,7 +46,8 @@ typedef void (*usr_def_button_long_press_callback)(void);
  * @param[in]   callback callback function for magnetic detached
  */
 void cfg_magnetic_sensor_init(bool is_active_high, uint32_t pin, magnetic_attach_callback callback_attach, magnetic_detach_callback callback_detach);
-
+bool cfg_magnetic_get_status(void); // 0:open, 1:close (Read from Gpio)
+bool cfg_magnetic_get_old_status(void); // 0:open, 1:close (Read from variable.)
 
 /**
  * @brief Function for initializing the wake up gpio. (active low signal)

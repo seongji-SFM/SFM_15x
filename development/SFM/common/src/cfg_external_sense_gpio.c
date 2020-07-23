@@ -118,6 +118,11 @@ bool cfg_magnetic_get_status(void)
     return magnetic_status;
 }
 
+bool cfg_magnetic_get_old_status(void) // 0:open, 1:close
+{
+    return m_magnetic_old_status;
+}
+
 static void cfg_magnetic_timeout_handler(void * p_context)
 {
     bool magnetic_status;

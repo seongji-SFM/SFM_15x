@@ -4,7 +4,7 @@
 /******************************************************
 module info
 *******************************************************/
-#define CDEV_MODEL_NAME "SRM200"   //MODEL NAME SIZE IS 6BYTE
+#define CDEV_MODEL_NAME "SFM20R"   //MODEL NAME SIZE IS 6BYTE
 /**********************
 module defines (CDEV_)
 SFM20R : MODEL_NAME to "SFM20R"
@@ -22,7 +22,7 @@ module feature (type)
 #define CDEV_MODULE_SFM60R                      (2)
 #define CDEV_MODULE_SRM200                      (3)
 
-#define CDEV_MODULE_TYPE                        CDEV_MODULE_SRM200
+#define CDEV_MODULE_TYPE                        CDEV_MODULE_SFM20R
 
 /******************************************************
 version information

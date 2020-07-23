@@ -2148,7 +2148,10 @@ void main_external_io_devices_init(void)
 {
 #ifdef USR_MODULE_GPIO_DEF_MAGNETIC_SIGNAL
     if(m_module_parameter.magnet_operation_mode)
+    {
         cfg_magnetic_sensor_init(USR_MODULE_GPIO_DEF_MAGNETIC_SIGNAL_ACTIVE_LEVEL, USR_MODULE_GPIO_DEF_MAGNETIC_SIGNAL, main_magnet_attach_callback, main_magnet_detach_callback);
+        magnet_status = cfg_magnetic_get_old_status();  //initial status
+    }
 #endif
 
 #ifdef USR_MODULE_GPIO_DEF_WAKEUP_KEY
