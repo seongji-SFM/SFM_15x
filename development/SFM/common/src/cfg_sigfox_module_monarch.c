@@ -51,10 +51,10 @@
 // #define SIGFOX_DUMMY_COMMAND                "help\r\n"
             // FIXME scan_rc check time
 #ifndef DEVELOP_TIME_TEST
-#define SIGFOX_START_RCZ_SCAN_COMMAND       "node_execute_monarch_scan 0x3F 6 2"
+#define SIGFOX_START_RCZ_SCAN_COMMAND       "node_execute_monarch_scan 0x7F 6 2"
 #else
 // #define SIGFOX_START_RCZ_SCAN_COMMAND       "node_execute_monarch_scan 0x3F 1 1"
-#define SIGFOX_START_RCZ_SCAN_COMMAND       "node_execute_monarch_scan 0x3F 6 2"
+#define SIGFOX_START_RCZ_SCAN_COMMAND       "node_execute_monarch_scan 0x7F 6 2"
 #endif
 #define SIGFOX_STOP_RCZ_SCAN_COMMAND        "node_stop_monarch_scan"
 #define SIGFOX_RCZ_OPEN_COMMAND             "node_open_with_zone"
@@ -411,7 +411,9 @@ void sigfox_Send_Command(void)
                 case 5: 
         	        sprintf((char*)send,"%s 0x%X 0x%X 0x%X %d\r\n",SIGFOX_RCZ_STD_CONFIG_COMMAND,RC5_SET_STD_CONFIG_WORD_0,RC5_SET_STD_CONFIG_WORD_1,RC5_SET_STD_CONFIG_WORD_2,RC5_SET_STD_TIMER); 
                 break;
-                case 6: 
+                case 6:
+                    return;
+                case 7:
                     return;
                 default:
                     return;
@@ -1524,6 +1526,9 @@ static void sigfox_state_handler(void * p_context)
                         break;
                     case 0x20:
                         rc_tmp = 6;
+                        break;
+                    case 0x40:
+                        rc_tmp = 7;
                         break;
                     default:
                         rc_tmp = 0;

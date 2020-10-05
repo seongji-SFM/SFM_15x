@@ -184,7 +184,7 @@ typedef struct
     uint8_t     sigfox_pac_code[8];
     uint8_t     board_ID;
 
-    uint8_t     sigfox_RC_number;                           //module_parameter_item_sigfox_RC_number /*1=RC1, 2=RC2, 3=RC3c, 4=RC4, 5=RC5, 6=RC6*/  //CDEV_SIGFOX_MONARCH_MODULE
+    uint8_t     sigfox_RC_number;                           //module_parameter_item_sigfox_RC_number /*1=RC1, 2=RC2, 3=RC3c, 4=RC4, 5=RC5, 6=RC6, 7=RC7*/  //CDEV_SIGFOX_MONARCH_MODULE
     uint8_t     sigfox_scan_rc_mode;                        //module_parameter_item_sigfox_scan_rc_mode  //CDEV_SIGFOX_MONARCH_MODULE
 
     int32_t     guard_area_align4_2;
