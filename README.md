@@ -1,3 +1,10 @@
+# Caution!
+This version is no longer supported.  
+New SDK released. See the following link.  
+https://github.com/Support-SJI/SFM20R_SRM200_Sigfox   
+
+<details markdown="1">
+<summary>old documents</summary>
 # Introduction
 
 The purpose of this tutorial is to help you getting started with Seongji Sigfox quad-mode module, how-to setup their SDK. 
