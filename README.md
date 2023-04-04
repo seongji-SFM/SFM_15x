@@ -1,6 +1,6 @@
 # Caution!
 This version is no longer supported.  
-New SDK released. See the following link.  
+The repository's URL has changed. See the following link.  
 https://github.com/Support-SJI/SFM20R_SRM200_Sigfox   
 
 <details markdown="1">
